@@ -14,6 +14,16 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Root route
+// Root
+app.get('/', (req, res) => {
+  res.json({
+    app: 'AutoMark API',
+    status: 'running',
+    endpoints: { content: '/api/content', competitors: '/api/competitors', analytics: '/api/analytics/dashboard', campaigns: '/api/campaigns' }
+  });
+});
+
 // Routes
 app.use(contentRoutes);
 app.use(competitorRoutes);
