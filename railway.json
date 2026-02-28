@@ -1,0 +1,17 @@
+{
+  "build": {
+    "builder": "Node.js",
+    "dotenv": true
+  },
+  "run": {
+    "commands": {
+      "start": "node server/index.js"
+    }
+  },
+  "env": {
+    "MONGODB_URI": {
+      "required": true
+    }
+  },
+  "port": 3001
+}
