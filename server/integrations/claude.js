@@ -1,7 +1,7 @@
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
 class AIClient {
-  constructor({ apiKey, model = 'google/gemini-2.5-flash-preview:free' }) {
+  constructor({ apiKey, model = 'qwen/qwen3-coder' }) {
     this.apiKey = apiKey;
     this.model = model;
     this.totalTokensIn = 0;
