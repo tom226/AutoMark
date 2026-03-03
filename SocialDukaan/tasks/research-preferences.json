@@ -1,0 +1,19 @@
+{
+  "platforms": [
+    "instagram",
+    "facebook"
+  ],
+  "categories": [
+    "marketing",
+    "sports"
+  ],
+  "categoryWeights": {
+    "marketing": 3,
+    "sports": 3
+  },
+  "customHashtags": [
+    "#runningevents",
+    "#marathon"
+  ],
+  "updatedAt": "2026-03-03T09:15:14.712Z"
+}

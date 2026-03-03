@@ -1,0 +1,37 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next
+/out
+
+# production
+/build
+
+# secrets — never commit these
+.env.local
+.tokens.json
+.autopilot.json
+.competitor-feed.json
+.competitors.json
+.experiments.json
+tasks/weekly-content.json
+tasks/topic-research.json
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
