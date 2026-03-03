@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-page-bg text-gray-800 antialiased;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #fafaf7;
+}
+::-webkit-scrollbar-thumb {
+  background: #e8e5dd;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d0c8;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sun-600 hover:shadow-md active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-gray-800 active:scale-[0.97];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-gray-600 transition-all hover:bg-sun-50 hover:text-gray-900 active:scale-[0.97];
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-page-border px-4 py-2 text-sm font-medium text-gray-600 transition-all hover:border-sun-300 hover:bg-sun-50 hover:text-gray-900 active:scale-[0.97];
+  }
+  .card {
+    @apply rounded-2xl border border-page-border bg-white shadow-card;
+  }
+  .input {
+    @apply w-full rounded-xl border border-page-border bg-white px-3.5 py-2.5 text-sm text-gray-800 placeholder-gray-400 transition focus:border-sun-400 focus:outline-none focus:ring-2 focus:ring-sun-200;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .section-title {
+    @apply text-lg font-bold text-gray-900;
+  }
+}
