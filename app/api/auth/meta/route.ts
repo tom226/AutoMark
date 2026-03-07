@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildAuthUrl } from "@/lib/meta";
+import { getAppOrigin } from "@/lib/app-origin";
 
 /**
  * GET /api/auth/meta
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = getAppOrigin(request.url);
   const redirectUri = `${origin}/api/auth/meta/callback`;
   const authUrl = buildAuthUrl(redirectUri);
 

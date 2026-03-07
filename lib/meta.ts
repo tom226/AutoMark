@@ -18,6 +18,29 @@ export interface StoredTokens {
   /** Flat list of connected Instagram Business Account IDs + which page they belong to */
   instagramAccounts: Array<{ igId: string; pageId: string; pageName: string }>;
   connectedAt: string;
+  linkedin?: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: string;
+    profile?: {
+      id?: string;
+      name?: string;
+      email?: string;
+      picture?: string;
+    };
+    connectedAt: string;
+  };
+  twitter?: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: string;
+    profile?: {
+      id?: string;
+      username?: string;
+      name?: string;
+    };
+    connectedAt: string;
+  };
 }
 
 export interface PagePostSample {

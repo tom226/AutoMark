@@ -19,6 +19,7 @@ import {
   PlusCircle,
   FlaskConical,
   Trophy,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { CompetitorFeedItem, Experiment } from "@/lib/types";
@@ -28,6 +29,38 @@ interface AccountsData {
   connectedAt?: string;
   pages: { id: string; name: string }[];
   instagramAccounts: { igId: string; pageId: string; pageName: string }[];
+  twitter?: {
+    connected: boolean;
+  };
+}
+
+interface ContentScoreReason {
+  key: string;
+  label: string;
+  status: "good" | "warn" | "bad";
+  score: number;
+  tip: string;
+}
+
+interface ContentScoreResponse {
+  status?: string;
+  score?: number;
+  grade?: "A" | "B" | "C";
+  predictedBand?: "high" | "medium" | "low";
+  reasons?: ContentScoreReason[];
+  improveActions?: string[];
+  message?: string;
+  error?: string;
+}
+
+interface ContentFixResponse {
+  status?: string;
+  improvedCaption?: string;
+  appliedFixes?: string[];
+  beforeScore?: number;
+  afterScore?: number;
+  message?: string;
+  error?: string;
 }
 
 const channels = [
@@ -81,6 +114,12 @@ export default function ComposeForm() {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [experimentsLoading, setExperimentsLoading] = useState(false);
   const [experimentBusy, setExperimentBusy] = useState(false);
+  const [scoreLoading, setScoreLoading] = useState(false);
+  const [scoreError, setScoreError] = useState("");
+  const [scoreData, setScoreData] = useState<ContentScoreResponse | null>(null);
+  const [fixLoading, setFixLoading] = useState(false);
+  const [fixError, setFixError] = useState("");
+  const [fixData, setFixData] = useState<ContentFixResponse | null>(null);
 
   const toggle = (key: ChannelKey) =>
     setSelected((prev) =>
@@ -190,12 +229,22 @@ export default function ComposeForm() {
     setPosting(true);
     setPostResults(null);
     try {
-      const supportedChannels = selected.filter((c) => c === "instagram" || c === "facebook");
+      const supportedChannels = selected.filter(
+        (c) => c === "instagram" || c === "facebook" || c === "twitter"
+      );
       if (supportedChannels.length === 0) {
-        setPostResults({ info: { success: false, error: "Only Facebook and Instagram are supported right now." } });
+        setPostResults({
+          info: {
+            success: false,
+            error: "Only Instagram, Facebook, and Twitter/X are supported right now.",
+          },
+        });
         return;
       }
-      if (!selectedPageId) {
+
+      const needsMetaPage = supportedChannels.some((c) => c === "instagram" || c === "facebook");
+
+      if (needsMetaPage && !selectedPageId) {
         setPostResults({ auth: { success: false, error: "Please select a Facebook Page to publish from." } });
         return;
       }
@@ -228,7 +277,7 @@ export default function ComposeForm() {
           channels: supportedChannels,
           caption,
           imageUrl: imageUrl.trim() || undefined,
-          pageId: selectedPageId,
+          pageId: needsMetaPage ? selectedPageId : undefined,
         }),
       });
       const data = await res.json();
@@ -332,6 +381,84 @@ export default function ComposeForm() {
     return ((engagements / impressions) * 100).toFixed(1);
   };
 
+  const checkPostScore = async () => {
+    if (!caption.trim() || selected.length === 0) return;
+
+    setScoreLoading(true);
+    setScoreError("");
+
+    const selectedDateTime =
+      date && time ? new Date(`${date}T${time}`).toISOString() : undefined;
+
+    try {
+      const response = await fetch("/api/content/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption,
+          channel: selected[0],
+          imageUrl: imageUrl.trim() || undefined,
+          scheduledAt: selectedDateTime,
+        }),
+      });
+
+      const data = (await response.json()) as ContentScoreResponse;
+      if (!response.ok || data.error) {
+        setScoreError(data.error || "Failed to score this post.");
+        setScoreData(null);
+        return;
+      }
+
+      setScoreData(data);
+    } catch {
+      setScoreError("Failed to score this post.");
+      setScoreData(null);
+    } finally {
+      setScoreLoading(false);
+    }
+  };
+
+  const fixWithAi = async () => {
+    if (!caption.trim() || selected.length === 0) return;
+
+    setFixLoading(true);
+    setFixError("");
+
+    const selectedDateTime =
+      date && time ? new Date(`${date}T${time}`).toISOString() : undefined;
+
+    try {
+      const response = await fetch("/api/content/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption,
+          channel: selected[0],
+          imageUrl: imageUrl.trim() || undefined,
+          scheduledAt: selectedDateTime,
+        }),
+      });
+
+      const data = (await response.json()) as ContentFixResponse;
+      if (!response.ok || data.error) {
+        setFixError(data.error || "Failed to improve caption.");
+        setFixData(null);
+        return;
+      }
+
+      if (data.improvedCaption) {
+        setCaption(data.improvedCaption);
+      }
+      setFixData(data);
+      await checkPostScore();
+    } catch {
+      setFixError("Failed to improve caption.");
+      setFixData(null);
+    } finally {
+      setFixLoading(false);
+    }
+  };
+
   return (
     <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
       <div className="space-y-6">
@@ -400,6 +527,11 @@ export default function ComposeForm() {
               No connected account found. Connect your account from onboarding before posting.
             </p>
           )}
+          {selected.includes("twitter") && !accounts?.twitter?.connected && (
+            <p className="text-xs text-amber-600">
+              Twitter/X is selected but not connected yet. Connect it from onboarding to publish.
+            </p>
+          )}
         </div>
       </div>
 
@@ -446,6 +578,117 @@ export default function ComposeForm() {
       </div>
 
       {/* Image upload area */}
+      <div className="card rounded-2xl border border-gray-100 bg-white p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="section-title flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            <Gauge className="h-4 w-4" />
+            Post Intelligence Score
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fixWithAi}
+              disabled={!caption.trim() || selected.length === 0 || fixLoading}
+              className="btn-outline rounded-lg border border-sun-300 px-3 py-1.5 text-xs font-semibold text-sun-700 transition hover:bg-sun-50 disabled:opacity-50"
+            >
+              {fixLoading ? "Fixing..." : "Fix with AI"}
+            </button>
+            <button
+              onClick={checkPostScore}
+              disabled={!caption.trim() || selected.length === 0 || scoreLoading}
+              className="btn-outline rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              {scoreLoading ? "Checking..." : "Check Post Score"}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          Simple quality check before posting. Optimized for India audience behavior and easy-to-follow actions.
+        </p>
+
+        {scoreError ? <p className="mt-2 text-xs text-red-600">{scoreError}</p> : null}
+        {fixError ? <p className="mt-2 text-xs text-red-600">{fixError}</p> : null}
+
+        {fixData?.improvedCaption ? (
+          <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <p className="font-semibold">AI Fix Applied</p>
+            <p className="mt-1">
+              Score improved: {fixData.beforeScore ?? "-"} → {fixData.afterScore ?? "-"}
+            </p>
+            {Array.isArray(fixData.appliedFixes) && fixData.appliedFixes.length > 0 ? (
+              <ul className="mt-1 space-y-0.5">
+                {fixData.appliedFixes.slice(0, 3).map((item, idx) => (
+                  <li key={`${idx}-${item}`}>{idx + 1}. {item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
+        {scoreData?.score != null ? (
+          <div className="mt-3 space-y-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-[11px] text-gray-500">Overall Score</p>
+                <p className="text-xl font-bold text-gray-900">{scoreData.score}/100</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-[11px] text-gray-500">Grade</p>
+                <p className="text-xl font-bold text-gray-900">{scoreData.grade}</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                <p className="text-[11px] text-gray-500">Expected Reach Band</p>
+                <p className="text-xl font-bold capitalize text-gray-900">{scoreData.predictedBand}</p>
+              </div>
+            </div>
+
+            {scoreData.message ? <p className="text-xs text-gray-600">{scoreData.message}</p> : null}
+
+            {Array.isArray(scoreData.improveActions) && scoreData.improveActions.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-semibold text-gray-700">Top 3 Fixes (Do This First)</p>
+                <ul className="space-y-1">
+                  {scoreData.improveActions.slice(0, 3).map((item, idx) => (
+                    <li key={`${idx}-${item}`} className="rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2 text-xs text-gray-700">
+                      {idx + 1}. {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {Array.isArray(scoreData.reasons) && scoreData.reasons.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-semibold text-gray-700">Detailed Breakdown</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {scoreData.reasons.map((reason) => (
+                    <div key={reason.key} className="rounded-lg border border-gray-100 px-2.5 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-gray-800">{reason.label}</span>
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                            reason.status === "good"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : reason.status === "warn"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-red-100 text-red-700"
+                          )}
+                        >
+                          {reason.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-gray-600">Score: {reason.score}/100</p>
+                      <p className="mt-1 text-gray-500">{reason.tip}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
       <div className="card rounded-2xl border border-gray-100 bg-white p-5">
         <h2 className="section-title mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Media
@@ -626,7 +869,12 @@ export default function ComposeForm() {
           </button>
           <button
             onClick={handlePost}
-            disabled={posting || !caption.trim() || selected.length === 0 || !selectedPageId}
+            disabled={
+              posting ||
+              !caption.trim() ||
+              selected.length === 0 ||
+              (selected.some((c) => c === "instagram" || c === "facebook") && !selectedPageId)
+            }
             className="btn-primary flex items-center gap-2 rounded-xl bg-sun-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sun-600 disabled:opacity-50"
           >
             {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

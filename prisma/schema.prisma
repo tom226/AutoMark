@@ -1,0 +1,457 @@
+// Prisma schema for AutoMark
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Authentication & Users
+// ============================================
+
+model User {
+  id                String     @id @default(cuid())
+  email             String     @unique
+  phone             String?    @unique
+  name              String?
+  profileImage      String?
+  language          String     @default("en") // 'en' or 'hi'
+  niche             String?    // e.g., "restaurant", "fashion", "fitness"
+  postingGoal       Int        @default(3) // posts per week
+  timezone          String     @default("Asia/Kolkata")
+  
+  // Account details
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lastActiveAt      DateTime   @default(now())
+
+  // Relations
+  accounts          SocialAccount[]
+  posts             Post[]
+  inbox             InboxMessage[]
+  analytics         UserAnalytics?
+  streak            UserStreak?
+  badges            UserBadge[]
+  subscription      Subscription?
+  notifications     Notification[]
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  sessionToken  String   @unique
+  userId        String
+  expires       DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============================================
+// Social Accounts
+// ============================================
+
+model SocialAccount {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  platform          String     // 'instagram', 'facebook', 'linkedin', 'twitter', 'youtube', 'gmb', 'whatsapp'
+  username          String
+  accountName       String?
+  accountImage      String?
+  
+  // API credentials
+  accessToken       String?
+  refreshToken      String?
+  tokenExpiresAt    DateTime?
+  
+  // Account metadata
+  followersCount    Int        @default(0)
+  bio               String?
+  profileUrl        String?
+  
+  isConnected       Boolean    @default(true)
+  connectedAt       DateTime   @default(now())
+  lastSyncedAt      DateTime?
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  // Relations
+  posts             Post[]
+  inboxMessages     InboxMessage[]
+  analytics         PlatformAnalytics[]
+
+  @@unique([userId, platform, username])
+  @@index([userId])
+  @@index([platform])
+}
+
+// ============================================
+// Posts & Content
+// ============================================
+
+model Post {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Content
+  caption           String     @db.Text
+  hashtags          String[]   // JSON array of hashtags
+  mediaUrls         String[]   // Images/videos
+  altText           String?
+  
+  // Status & Scheduling
+  status            PostStatus @default(DRAFT) // DRAFT, SCHEDULED, PUBLISHED, FAILED
+  scheduledFor      DateTime?
+  publishedAt       DateTime?
+  
+  // Platforms
+  platforms         String[]   // Which platforms to post to
+  platformPostIds   Json?      // { "instagram": "123456", "facebook": "789" }
+  
+  // Tone & Variants
+  tone              String     @default("casual") // professional, casual, funny, emotional, urgent
+  variants          PostVariant[]
+  
+  // Performance
+  analyticsSnapshot Analytics?
+  
+  // Metadata
+  isAIGenerated     Boolean    @default(true)
+  generatedFrom     String?    // keyword that generated this post
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  accounts          SocialAccount[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([publishedAt])
+  @@index([createdAt])
+}
+
+model PostVariant {
+  id                String     @id @default(cuid())
+  postId            String
+  post              Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  caption           String     @db.Text
+  tone              String     // professional, casual, funny, emotional, urgent
+  hashtags          String[]
+  
+  createdAt         DateTime   @default(now())
+
+  @@index([postId])
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+// ============================================
+// Analytics & Scoring
+// ============================================
+
+model Analytics {
+  id                String     @id @default(cuid())
+  postId            String     @unique
+  post              Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  platform          String
+  platformPostId    String?
+  
+  likes             Int        @default(0)
+  comments          Int        @default(0)
+  shares            Int        @default(0)
+  saves             Int        @default(0)
+  impressions       Int        @default(0)
+  reach             Int        @default(0)
+  clicks            Int        @default(0)
+  
+  engagementRate    Float      @default(0)
+  
+  syncedAt          DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([postId])
+  @@index([platform])
+}
+
+model UserAnalytics {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Weekly metrics
+  postsThisWeek     Int        @default(0)
+  totalReach        Int        @default(0)
+  totalEngagement   Int        @default(0)
+  avgEngagementRate Float      @default(0)
+  
+  // Growth
+  newFollowersWeek  Int        @default(0)
+  totalFollowers    Int        @default(0)
+  growthRate        Float      @default(0) // percentage
+  
+  // Scoring
+  automarkScore     Int        @default(42) // 0-100
+  consistency       Int        @default(50)
+  engagement        Int        @default(50)
+  growth            Int        @default(50)
+  reach             Int        @default(50)
+  responseRate      Int        @default(50)
+  
+  // Response metrics
+  inboxMessages     Int        @default(0)
+  repliedMessages   Int        @default(0)
+  responseTimeHours Float      @default(24)
+  
+  snapshotDate      DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([snapshotDate])
+}
+
+model PlatformAnalytics {
+  id                String     @id @default(cuid())
+  socialAccountId   String
+  account           SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  
+  platform          String
+  followers         Int        @default(0)
+  engagementRate    Float      @default(0)
+  avgPostReach      Int        @default(0)
+  avgLikes          Int        @default(0)
+  
+  syncedAt          DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@unique([socialAccountId])
+  @@index([platform])
+}
+
+// ============================================
+// Inbox & Messaging
+// ============================================
+
+model InboxMessage {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  accountId         String
+  account           SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  platform          String     // 'instagram', 'facebook', 'twitter', etc.
+  platformMessageId String?
+  
+  senderName        String
+  senderHandle      String
+  senderImage       String?
+  
+  messageText       String     @db.Text
+  messageType       String     @default("dm") // dm, comment, mention
+  
+  sentiment         String     @default("neutral") // positive, negative, neutral
+  
+  status            MessageStatus @default(UNREAD) // UNREAD, READ, REPLIED, ARCHIVED
+  
+  replies           MessageReply[]
+  suggestedReplies  SuggestedReply[]
+  
+  receivedAt        DateTime   @default(now())
+  repliedAt         DateTime?
+  updatedAt         DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([status])
+  @@index([receivedAt])
+}
+
+enum MessageStatus {
+  UNREAD
+  READ
+  REPLIED
+  ARCHIVED
+  STARRED
+}
+
+model MessageReply {
+  id                String     @id @default(cuid())
+  inboxMessageId    String
+  message           InboxMessage @relation(fields: [inboxMessageId], references: [id], onDelete: Cascade)
+  
+  replyText         String     @db.Text
+  isAutomatic       Boolean    @default(false)
+  
+  sentAt            DateTime   @default(now())
+
+  @@index([inboxMessageId])
+}
+
+model SuggestedReply {
+  id                String     @id @default(cuid())
+  inboxMessageId    String
+  message           InboxMessage @relation(fields: [inboxMessageId], references: [id], onDelete: Cascade)
+  
+  suggestionText    String     @db.Text
+  rank              Int        // 1, 2, 3
+  
+  isUsed            Boolean    @default(false)
+  usedAt            DateTime?
+  
+  createdAt         DateTime   @default(now())
+
+  @@index([inboxMessageId])
+}
+
+// ============================================
+// Gamification
+// ============================================
+
+model UserStreak {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  currentStreak     Int        @default(0)
+  longestStreak     Int        @default(0)
+  
+  lastPostDate      DateTime?
+  streakStartDate   DateTime?
+  
+  shieldUsedCount   Int        @default(0) // streak shields used this month
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model UserBadge {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  badgeType         String     // 'first_post', 'on_fire', 'century', etc.
+  badgeName         String
+  badgeIcon         String
+  badgeDescription  String?
+  
+  unlockedAt        DateTime   @default(now())
+
+  @@unique([userId, badgeType])
+  @@index([userId])
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+model Notification {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type              String     // 'morning_brief', 'viral_alert', 'streak_nudge', etc.
+  title             String
+  message           String
+  
+  isRead            Boolean    @default(false)
+  sentAt            DateTime   @default(now())
+  readAt            DateTime?
+
+  @@index([userId])
+  @@index([sentAt])
+}
+
+// ============================================
+// Billing & Subscriptions
+// ============================================
+
+model Subscription {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  plan              SubscriptionPlan @default(FREE) // FREE, STARTER, PRO, AGENCY, ENTERPRISE
+  
+  status            SubscriptionStatus @default(ACTIVE)
+  
+  // Billing
+  amount            Int        // in paisa (₹x = x*100)
+  currency          String     @default("INR")
+  billingCycle      String     @default("monthly") // monthly, annual
+  
+  // Razorpay
+  razorpaySubId     String?
+  razorpayCustomerId String?
+  
+  // Dates
+  startDate         DateTime   @default(now())
+  renewalDate       DateTime?
+  cancelledAt       DateTime?
+  
+  features          Json?      // Feature limits per plan
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  AGENCY
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  PAUSED
+}
+
+model Invoice {
+  id                String     @id @default(cuid())
+  subscriptionId    String
+  
+  invoiceNumber     String     @unique
+  razorpayInvoiceId String?    @unique
+  
+  amount            Int        // in paisa
+  currency          String     @default("INR")
+  
+  status            String     @default("issued") // issued, paid, failed, cancelled
+  
+  issuedAt          DateTime   @default(now())
+  dueAt             DateTime?
+  paidAt            DateTime?
+  
+  receiptUrl        String?
+  
+  createdAt         DateTime   @default(now())
+
+  @@index([subscriptionId])
+}

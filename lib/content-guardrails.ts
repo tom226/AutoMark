@@ -27,7 +27,7 @@ function extractHashtags(caption: string): string[] {
 export function validateContentGuardrails(input: {
   caption: string;
   imageUrl?: string;
-  channel?: "instagram" | "facebook";
+  channel?: "instagram" | "facebook" | "linkedin" | "twitter";
 }): GuardrailResult {
   const normalizedCaption = normalizeCaption(input.caption ?? "");
   const errors: string[] = [];

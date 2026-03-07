@@ -6,6 +6,7 @@ import {
   type StoredTokens,
 } from "@/lib/meta";
 import { saveTokens } from "@/lib/token-store";
+import { getAppOrigin } from "@/lib/app-origin";
 
 /**
  * GET /api/auth/meta/callback
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
 
-  const origin = url.origin;
+  const origin = getAppOrigin(request.url);
   const redirectUri = `${origin}/api/auth/meta/callback`;
 
   if (error || !code) {

@@ -4,7 +4,8 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "SocialDukaan", template: "%s · SocialDukaan" },
   description: "Plan, schedule, and analyze your social content — all in one place.",
-  icons: { icon: "/favicon.ico" }
+  icons: { icon: "/icon.svg" },
+  manifest: "/manifest.webmanifest"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

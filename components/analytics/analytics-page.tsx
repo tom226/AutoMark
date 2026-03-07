@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   Eye,
   TrendingUp,
@@ -121,6 +123,12 @@ function formatNumber(n: number): string {
 /* ── Component ────────────────────────────────────────────── */
 
 export default function AnalyticsPage() {
+  const [chartsReady, setChartsReady] = useState(false);
+
+  useEffect(() => {
+    setChartsReady(true);
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Metric cards */}
@@ -149,41 +157,45 @@ export default function AnalyticsPage() {
       <div className="card p-6">
         <h3 className="section-title mb-4">Weekly Reach</h3>
         <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
-            <LineChart data={WEEKLY_REACH}>
-              <CartesianGrid stroke="#f0f0ec" strokeDasharray="4 4" />
-              <XAxis
-                dataKey="week"
-                tick={{ fontSize: 12, fill: "#9ca3af" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 12, fill: "#9ca3af" }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v: number) => formatNumber(v)}
-              />
-              <Tooltip
-                contentStyle={{
-                  borderRadius: "0.75rem",
-                  border: "1px solid #f0f0ec",
-                  fontSize: 13,
-                }}
-                formatter={(value: number | undefined) =>
-                  value != null ? [formatNumber(value), "Reach"] : ["—", "Reach"]
-                }
-              />
-              <Line
-                type="monotone"
-                dataKey="reach"
-                stroke="#f59e0b"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#f59e0b", strokeWidth: 0 }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {chartsReady ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
+              <LineChart data={WEEKLY_REACH}>
+                <CartesianGrid stroke="#f0f0ec" strokeDasharray="4 4" />
+                <XAxis
+                  dataKey="week"
+                  tick={{ fontSize: 12, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: number) => formatNumber(v)}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "0.75rem",
+                    border: "1px solid #f0f0ec",
+                    fontSize: 13,
+                  }}
+                  formatter={(value: number | undefined) =>
+                    value != null ? [formatNumber(value), "Reach"] : ["—", "Reach"]
+                  }
+                />
+                <Line
+                  type="monotone"
+                  dataKey="reach"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: "#f59e0b", strokeWidth: 0 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full w-full rounded-xl bg-gray-50" />
+          )}
         </div>
       </div>
 
@@ -223,53 +235,57 @@ export default function AnalyticsPage() {
             Posts per day — You vs. Competitor
           </p>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
-              <BarChart data={COMPETITOR_DATA} barGap={4}>
-                <CartesianGrid
-                  stroke="#f0f0ec"
-                  strokeDasharray="4 4"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12, fill: "#9ca3af" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: "#9ca3af" }}
-                  axisLine={false}
-                  tickLine={false}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "0.75rem",
-                    border: "1px solid #f0f0ec",
-                    fontSize: 13,
-                  }}
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: 12 }}
-                  iconType="circle"
-                  iconSize={8}
-                />
-                <Bar
-                  dataKey="you"
-                  name="You"
-                  fill="#f59e0b"
-                  radius={[6, 6, 0, 0]}
-                  barSize={18}
-                />
-                <Bar
-                  dataKey="competitor"
-                  name="Competitor"
-                  fill="#d1d5db"
-                  radius={[6, 6, 0, 0]}
-                  barSize={18}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
+                <BarChart data={COMPETITOR_DATA} barGap={4}>
+                  <CartesianGrid
+                    stroke="#f0f0ec"
+                    strokeDasharray="4 4"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: "#9ca3af" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: "#9ca3af" }}
+                    axisLine={false}
+                    tickLine={false}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "0.75rem",
+                      border: "1px solid #f0f0ec",
+                      fontSize: 13,
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12 }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  <Bar
+                    dataKey="you"
+                    name="You"
+                    fill="#f59e0b"
+                    radius={[6, 6, 0, 0]}
+                    barSize={18}
+                  />
+                  <Bar
+                    dataKey="competitor"
+                    name="Competitor"
+                    fill="#d1d5db"
+                    radius={[6, 6, 0, 0]}
+                    barSize={18}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full rounded-xl bg-gray-50" />
+            )}
           </div>
         </div>
       </div>
