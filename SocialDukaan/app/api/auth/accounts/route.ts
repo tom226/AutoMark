@@ -9,13 +9,34 @@ import { loadTokens, clearTokens } from "@/lib/token-store";
 export async function GET() {
   const tokens = await loadTokens();
   if (!tokens) {
-    return NextResponse.json({ connected: false, pages: [], instagramAccounts: [] });
+    return NextResponse.json({
+      connected: false,
+      pages: [],
+      instagramAccounts: [],
+      linkedin: { connected: false },
+      twitter: { connected: false },
+    });
   }
+
+  const metaConnected = tokens.pages.length > 0 || tokens.instagramAccounts.length > 0;
+  const linkedinConnected = Boolean(tokens.linkedin?.accessToken);
+  const twitterConnected = Boolean(tokens.twitter?.accessToken);
+
   return NextResponse.json({
-    connected: true,
+    connected: metaConnected || linkedinConnected || twitterConnected,
     connectedAt: tokens.connectedAt,
     pages: tokens.pages.map((p) => ({ id: p.id, name: p.name })),
     instagramAccounts: tokens.instagramAccounts,
+    linkedin: {
+      connected: linkedinConnected,
+      connectedAt: tokens.linkedin?.connectedAt,
+      profile: tokens.linkedin?.profile,
+    },
+    twitter: {
+      connected: twitterConnected,
+      connectedAt: tokens.twitter?.connectedAt,
+      profile: tokens.twitter?.profile,
+    },
   });
 }
 

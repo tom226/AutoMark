@@ -27,6 +27,15 @@ function normalizeTopic(topic: string): string {
   return topic.replace(/\s+/g, " ").trim();
 }
 
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+}
+
 function splitSentences(text: string): string[] {
   return text
     .replace(/\s+/g, " ")
@@ -45,6 +54,31 @@ function uniqueInsights(items: TopicResearchInsight[]): TopicResearchInsight[] {
     out.push(item);
   }
   return out;
+}
+
+function relevanceScore(input: {
+  title: string;
+  summary: string;
+  topic: string;
+  location?: string;
+}): number {
+  const haystack = `${input.title} ${input.summary}`.toLowerCase();
+  const topicTokens = tokenize(input.topic);
+  const locationTokens = tokenize(input.location ?? "");
+
+  let score = 0;
+  for (const token of topicTokens) {
+    if (haystack.includes(token)) score += 2;
+  }
+  for (const token of locationTokens) {
+    if (haystack.includes(token)) score += 1;
+  }
+
+  if (/(event|campaign|trend|marketing|social|audience|engagement|running|marathon)/.test(haystack)) {
+    score += 1;
+  }
+
+  return score;
 }
 
 async function fetchWikiSearch(topic: string): Promise<string[]> {
@@ -93,12 +127,22 @@ export async function researchTopicInsights(input: {
     const sentences = splitSentences(summary.extract);
     if (sentences.length === 0) continue;
 
-    insights.push({
+    const candidate: TopicResearchInsight = {
       id: `insight-${Date.now()}-${insights.length}`,
       title: summary.title ?? title,
       summary: sentences[0].slice(0, 260),
       sourceUrl: summary.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, "_"))}`,
+    };
+
+    const score = relevanceScore({
+      title: candidate.title,
+      summary: candidate.summary,
+      topic,
+      location: input.location,
     });
+
+    if (score < 3) continue;
+    insights.push(candidate);
   }
 
   const deduped = uniqueInsights(insights).slice(0, Math.max(minCount, 10));

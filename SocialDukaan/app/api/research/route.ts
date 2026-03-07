@@ -44,6 +44,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error: "Could not fetch competitor/trending data via wrapper right now. Try again shortly.",
+        nextStep: "Check your internet and competitor handles, then click Refresh again.",
       },
       { status: 502 }
     );
@@ -57,5 +58,7 @@ export async function POST() {
   return NextResponse.json({
     ...saved,
     fetchedCount: fetched.items.length,
+    diagnostics: fetched.diagnostics,
+    statusMessage: "Research refreshed successfully. Review the diagnostics below to see what was accepted or skipped.",
   });
 }

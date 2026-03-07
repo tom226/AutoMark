@@ -18,46 +18,73 @@ import {
 const features = [
   {
     icon: Bot,
-    title: "Autopilot Posting",
-    desc: "Set it and forget it. Our AI watches your competitors and auto-generates + schedules posts that outperform theirs.",
+    title: "Auto Post Creation",
+    desc: "The app writes ready-to-use post ideas and captions for you, so you do not have to start from a blank page.",
     accent: "bg-sun-100 text-sun-700"
   },
   {
     icon: Target,
-    title: "Competitor Intelligence",
-    desc: "Track any competitor's handles. See their posting patterns, top hashtags, and engagement - then beat them automatically.",
+    title: "See What Competitors Post",
+    desc: "Add competitor pages and quickly understand what they post, how often they post, and what performs well.",
     accent: "bg-orange-100 text-orange-700"
   },
   {
     icon: Sparkles,
-    title: "AI Content Studio",
-    desc: "Generate captions, hashtags, and CTAs trained on what's working right now in your niche.",
+    title: "Ready Captions and Hashtags",
+    desc: "Get simple caption options and useful hashtags based on your business type and target audience.",
     accent: "bg-amber-100 text-amber-700"
   },
   {
     icon: CalendarDays,
-    title: "Visual Calendar",
-    desc: "See your entire month at a glance. Drag, drop, and reschedule across all channels instantly.",
+    title: "Monthly Content Calendar",
+    desc: "See your upcoming posts in one clean calendar so you always know what is going out and when.",
     accent: "bg-yellow-100 text-yellow-700"
   },
   {
     icon: BarChart3,
-    title: "Smart Analytics",
-    desc: "Know what works. Compare your performance against competitors with side-by-side engagement charts.",
+    title: "Easy Performance Report",
+    desc: "Understand what is working with plain language insights like: post more reels, post at 7 PM, use these hashtags.",
     accent: "bg-lime-100 text-lime-700"
   },
   {
     icon: Zap,
-    title: "One-Click Setup",
-    desc: "Connect Instagram, Facebook, LinkedIn, and Twitter in under 60 seconds. We guide you through every step.",
+    title: "Simple Setup",
+    desc: "Connect your social accounts and start in minutes. No technical setup, no complicated dashboards.",
     accent: "bg-emerald-100 text-emerald-700"
   }
 ];
 
 const steps = [
-  { num: "01", title: "Connect Your Accounts", desc: "Link Instagram, Facebook, LinkedIn, or Twitter in a single click." },
-  { num: "02", title: "Add Competitors", desc: "Enter competitor handles - we start tracking their activity immediately." },
-  { num: "03", title: "Enable Autopilot", desc: "Turn on autonomous posting. AI creates, schedules, and publishes for you." }
+  {
+    num: "01",
+    title: "Sign up and choose your business type",
+    desc: "Tell us if you are a shop owner, creator, coach, agency, or any other business. This helps the app suggest the right content style."
+  },
+  {
+    num: "02",
+    title: "Connect your social accounts",
+    desc: "Connect Instagram, Facebook, LinkedIn, or X using simple login buttons. No coding or technical setup required."
+  },
+  {
+    num: "03",
+    title: "Add your goals",
+    desc: "Choose what you want: more sales, more followers, more profile visits, or more messages."
+  },
+  {
+    num: "04",
+    title: "Review AI suggestions",
+    desc: "The app creates post ideas, captions, and hashtags for your business. You can edit, approve, or skip any suggestion."
+  },
+  {
+    num: "05",
+    title: "Set your posting schedule",
+    desc: "Pick days and times once. The app keeps posting at the best times without daily manual work."
+  },
+  {
+    num: "06",
+    title: "Track results in plain language",
+    desc: "Check weekly progress with simple tips that tell you exactly what to do next."
+  }
 ];
 
 export default function HomePage() {
@@ -103,23 +130,23 @@ export default function HomePage() {
         <div className="relative mx-auto max-w-4xl px-6 text-center">
           <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-sun-200 bg-sun-50 px-4 py-1.5 text-xs font-semibold text-sun-700">
             <Bot className="h-3.5 w-3.5" />
-            Autonomous Social Media Posting - Powered by AI
+            Simple social media help for busy business owners
           </span>
           <h1 className="mt-4 text-5xl font-extrabold leading-[1.1] tracking-tight text-gray-900 md:text-7xl">
-            Post smarter{" "}
+            Grow on social media{" "}
             <span className="bg-gradient-to-r from-sun-500 via-amber-500 to-orange-500 bg-clip-text text-transparent">
-              than your competitors
+              without hiring a team
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-500">
-            Connect your socials, track competitor activity, and let AI autonomously create and schedule winning content - while you focus on growing your business.
+            SocialDukaan helps you plan, write, and post content for your business in simple steps. You get ready captions, smart posting times, and clear growth tips - even if you are not a marketing expert.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/dashboard/onboarding" className="btn-primary px-8 py-3.5 text-base shadow-lg shadow-sun-200">
-              Start free - 60 second setup <ArrowRight className="h-4 w-4" />
+              Start free in minutes <ArrowRight className="h-4 w-4" />
             </Link>
             <a href="#how" className="btn-outline px-6 py-3 text-sm">
-              See how it works
+              See step-by-step guide
             </a>
           </div>
           <p className="mt-6 flex items-center justify-center gap-4 text-xs text-gray-400">
@@ -150,16 +177,42 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* What this app does */}
+      <section className="py-20">
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="rounded-3xl border border-page-border bg-white p-8 shadow-card md:p-10">
+            <p className="text-xs font-bold uppercase tracking-widest text-sun-600">What this app does</p>
+            <h2 className="mt-3 text-2xl font-extrabold text-gray-900 md:text-3xl">
+              Think of SocialDukaan as your small social media team
+            </h2>
+            <div className="mt-6 grid gap-4 text-sm leading-relaxed text-gray-600 md:grid-cols-2">
+              <p>
+                It helps you decide <strong>what to post</strong>, <strong>when to post</strong>, and <strong>how to improve</strong>.
+              </p>
+              <p>
+                You can keep full control or let autopilot handle posting while you run your business.
+              </p>
+              <p>
+                It is built for people who want results without learning complex marketing tools.
+              </p>
+              <p>
+                If you can use WhatsApp and Instagram, you can use SocialDukaan.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section id="how" className="bg-page-bg py-24">
         <div className="mx-auto max-w-5xl px-6">
           <div className="mb-14 text-center">
-            <p className="text-xs font-bold uppercase tracking-widest text-sun-600">3 simple steps</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-sun-600">Step-by-step guide</p>
             <h2 className="mt-3 text-3xl font-extrabold text-gray-900 md:text-4xl">
-              From zero to autopilot in 60 seconds
+              How to use SocialDukaan (no technical knowledge needed)
             </h2>
           </div>
-          <div className="grid gap-8 md:grid-cols-3">
+          <div className="grid gap-8 md:grid-cols-2">
             {steps.map(({ num, title, desc }) => (
               <div key={num} className="relative rounded-2xl border border-page-border bg-white p-8 shadow-card transition hover:shadow-lg">
                 <span className="mb-4 inline-block text-4xl font-extrabold text-sun-200">{num}</span>
@@ -170,7 +223,7 @@ export default function HomePage() {
           </div>
           <div className="mt-10 text-center">
             <Link href="/dashboard/onboarding" className="btn-primary px-8 py-3 text-sm">
-              Connect your first account <ChevronRight className="h-4 w-4" />
+              Start your first step <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
         </div>
@@ -182,7 +235,7 @@ export default function HomePage() {
           <div className="mb-14 text-center">
             <p className="text-xs font-bold uppercase tracking-widest text-sun-600">Everything you need</p>
             <h2 className="mt-3 text-3xl font-extrabold text-gray-900 md:text-4xl">
-              Beat competitors on autopilot
+              What you can do inside the app
             </h2>
           </div>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -206,13 +259,13 @@ export default function HomePage() {
             <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
             <div className="pointer-events-none absolute -bottom-10 -left-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
             <h2 className="relative text-3xl font-extrabold text-white md:text-4xl">
-              Ready to outperform your competition?
+              Ready to make social media easier?
             </h2>
             <p className="relative mt-3 text-lg text-white/80">
-              Join thousands of creators who let AI do the heavy lifting.
+              Start free and follow the step-by-step onboarding.
             </p>
             <Link href="/dashboard/onboarding" className="btn-secondary relative mt-8 px-8 py-3.5 text-sm">
-              Start free today <ArrowRight className="h-4 w-4" />
+              Try SocialDukaan now <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { publishToChannels } from "@/lib/social-publisher";
 import { validateContentGuardrails } from "@/lib/content-guardrails";
 
 interface PostPayload {
-  channels: ("instagram" | "facebook")[];
+  channels: ("instagram" | "facebook" | "twitter")[];
   caption: string;
   imageUrl?: string;
   pageId?: string;
@@ -39,9 +39,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Select at least one channel" }, { status: 400 });
   }
 
+  const needsMetaPage = channels.some((channel) => channel === "instagram" || channel === "facebook");
   const selectedPageId = pageId ?? tokens.pages[0]?.id;
 
-  if (!selectedPageId) {
+  if (needsMetaPage && !selectedPageId) {
     return NextResponse.json(
       { error: "Selected Facebook Page not found. Please reconnect your accounts." },
       { status: 400 }
@@ -67,13 +68,13 @@ export async function POST(request: Request) {
 
   const results = await publishToChannels({
     tokens,
-    pageId: selectedPageId,
+    pageId: selectedPageId ?? "",
     channels,
     caption: caption.trim(),
     imageUrl,
   });
 
-  const allFailed = Object.values(results).every((r) => !r.success);
+  const allFailed = Object.values(results).every((r) => !r?.success);
 
   return NextResponse.json(
     { results },

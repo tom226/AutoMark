@@ -53,6 +53,34 @@ interface WrappedFetchResult {
   hashtags: string[];
 }
 
+export interface ResearchFetchDiagnostics {
+  attemptedSources: number;
+  acceptedSources: number;
+  rejectedSources: number;
+  rejectionReasons: Record<string, number>;
+}
+
+type RejectionReason =
+  | "timeout_or_network"
+  | "http_not_ok"
+  | "content_too_short"
+  | "login_wall_or_blocked"
+  | "low_relevance";
+
+interface WrappedFetchAttempt {
+  result: WrappedFetchResult | null;
+  reason?: RejectionReason;
+}
+
+type ResearchKind = "competitor" | "trend";
+
+interface QualityContext {
+  kind: ResearchKind;
+  sourceUrl: string;
+  competitorHandle?: string;
+  requiredKeywords?: string[];
+}
+
 const WRAPPER_PREFIX = "https://r.jina.ai/http://";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -90,8 +118,98 @@ function isInstagramOrLinkedInSource(url: string): boolean {
   return /instagram\.com|linkedin\.com/i.test(url);
 }
 
+function normalizePlainText(value: string): string {
+  return value
+    .replace(/\r/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripWrapperBoilerplate(text: string): string {
+  const removedHeaders = text
+    .replace(/\bURL Source:\s*https?:\/\/[^\s]+/gi, " ")
+    .replace(/\bMarkdown Content:\s*/gi, " ")
+    .replace(/\bTitle:\s*/gi, " ")
+    .replace(/={3,}/g, " ")
+    .replace(/\[[^\]]*\]\([^)]*\)/g, " ");
+
+  return normalizePlainText(removedHeaders);
+}
+
+function isLikelyLoginWall(text: string, sourceUrl: string): boolean {
+  const haystack = `${text} ${sourceUrl}`.toLowerCase();
+  const loginPatterns = [
+    "log into instagram",
+    "login to instagram",
+    "see everyday moments from your close friends",
+    "instagram login",
+    "linkedin login",
+    "sign in with apple",
+    "sign in with google",
+    "forgot password",
+    "create account",
+    "by clicking continue",
+    "terms of service",
+  ];
+
+  return loginPatterns.some((pattern) => haystack.includes(pattern));
+}
+
+function toKeywordTokens(values: string[]): string[] {
+  return [...new Set(
+    values
+      .map((value) => value.toLowerCase().replace(/[^a-z0-9#\s]/g, " "))
+      .flatMap((value) => value.split(/\s+/))
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3)
+  )];
+}
+
+function computeKeywordMatches(text: string, keywords: string[]): number {
+  if (keywords.length === 0) return 0;
+
+  const haystack = text.toLowerCase();
+  let score = 0;
+  for (const keyword of keywords) {
+    if (haystack.includes(keyword)) score += 1;
+  }
+  return score;
+}
+
+function passesQualityGate(input: {
+  rawText: string;
+  snippet: string;
+  hashtags: string[];
+  context: QualityContext;
+}): { ok: boolean; reason?: RejectionReason } {
+  const text = normalizePlainText(`${input.rawText} ${input.context.sourceUrl}`);
+  if (text.length < 120) {
+    return { ok: false, reason: "content_too_short" };
+  }
+  if (isLikelyLoginWall(text, input.context.sourceUrl)) {
+    return { ok: false, reason: "login_wall_or_blocked" };
+  }
+
+  const keywordScore = computeKeywordMatches(text, input.context.requiredKeywords ?? []);
+  const hashtagScore = input.hashtags.length > 0 ? 1 : 0;
+  const summaryLengthScore = input.snippet.length >= 100 ? 1 : 0;
+  const totalScore = keywordScore + hashtagScore + summaryLengthScore;
+
+  if (input.context.kind === "competitor") {
+    return totalScore >= 2
+      ? { ok: true }
+      : { ok: false, reason: "low_relevance" };
+  }
+
+  return totalScore >= 3
+    ? { ok: true }
+    : { ok: false, reason: "low_relevance" };
+}
+
 function extractTitle(text: string): string {
-  const lines = text
+  const clean = stripWrapperBoilerplate(text);
+  const lines = clean
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 5);
@@ -100,7 +218,7 @@ function extractTitle(text: string): string {
 }
 
 function extractSnippet(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
+  const cleaned = stripWrapperBoilerplate(text);
   return cleaned.slice(0, 280);
 }
 
@@ -116,7 +234,7 @@ function extractHashtags(text: string): string[] {
   return [...unique];
 }
 
-async function fetchWrappedContent(url: string): Promise<WrappedFetchResult | null> {
+async function fetchWrappedContent(url: string, context: QualityContext): Promise<WrappedFetchAttempt> {
   const wrappedUrl = toWrappedUrl(url);
 
   try {
@@ -130,20 +248,30 @@ async function fetchWrappedContent(url: string): Promise<WrappedFetchResult | nu
       18_000
     );
 
-    if (!response.ok) return null;
+    if (!response.ok) return { result: null, reason: "http_not_ok" };
 
     const text = await response.text();
     const snippet = extractSnippet(text);
-    if (!snippet || snippet.length < 30) return null;
+    if (!snippet || snippet.length < 30) {
+      return { result: null, reason: "content_too_short" };
+    }
+
+    const hashtags = extractHashtags(text);
+    const quality = passesQualityGate({ rawText: text, snippet, hashtags, context });
+    if (!quality.ok) {
+      return { result: null, reason: quality.reason ?? "low_relevance" };
+    }
 
     return {
-      sourceUrl: url,
-      title: extractTitle(text),
-      snippet,
-      hashtags: extractHashtags(text),
+      result: {
+        sourceUrl: url,
+        title: extractTitle(text),
+        snippet,
+        hashtags,
+      },
     };
   } catch {
-    return null;
+    return { result: null, reason: "timeout_or_network" };
   }
 }
 
@@ -203,11 +331,47 @@ async function fetchTrendingSources(input: {
   platforms?: string[];
   categories?: string[];
   categoryWeights?: Record<string, number>;
-}): Promise<WrappedFetchResult[]> {
+  customHashtags?: string[];
+}): Promise<{ results: WrappedFetchResult[]; diagnostics: ResearchFetchDiagnostics }> {
   const trendUrls = getWeightedTrendUrls(input);
+  const baseKeywords = toKeywordTokens([
+    ...(input.platforms ?? []),
+    ...(input.categories ?? []),
+    ...((input.customHashtags ?? []).map((tag) => tag.replace(/^#/, ""))),
+    "trend",
+    "social",
+    "content",
+  ]);
 
-  const results = await Promise.all(trendUrls.map((url) => fetchWrappedContent(url)));
-  return results.filter((item): item is WrappedFetchResult => Boolean(item));
+  const attempts = await Promise.all(
+    trendUrls.map((url) =>
+      fetchWrappedContent(url, {
+        kind: "trend",
+        sourceUrl: url,
+        requiredKeywords: baseKeywords,
+      })
+    )
+  );
+
+  const rejectionReasons: Record<string, number> = {};
+  for (const item of attempts) {
+    if (item.result || !item.reason) continue;
+    rejectionReasons[item.reason] = (rejectionReasons[item.reason] ?? 0) + 1;
+  }
+
+  const results = attempts
+    .map((item) => item.result)
+    .filter((item): item is WrappedFetchResult => Boolean(item));
+
+  return {
+    results,
+    diagnostics: {
+      attemptedSources: trendUrls.length,
+      acceptedSources: results.length,
+      rejectedSources: Math.max(0, trendUrls.length - results.length),
+      rejectionReasons,
+    },
+  };
 }
 
 function buildTrendingHashtags(items: ResearchItem[]): TrendingHashtag[] {
@@ -239,35 +403,51 @@ export async function fetchResearchUsingWrapper(input: {
   categories?: string[];
   categoryWeights?: Record<string, number>;
   customHashtags?: string[];
-}): Promise<{ items: ResearchItem[]; trendingHashtags: TrendingHashtag[] }> {
+}): Promise<{ items: ResearchItem[]; trendingHashtags: TrendingHashtag[]; diagnostics: ResearchFetchDiagnostics }> {
   const now = new Date().toISOString();
   const userCompetitors = input.competitors.filter((item) => item.handle && item.handle.trim().length > 0);
 
-  const competitorResults = await Promise.all(
+  const competitorAttempts = await Promise.all(
     userCompetitors.map(async (competitor, index) => {
       const sourceUrl = buildCompetitorUrl(competitor);
-      const wrapped = await fetchWrappedContent(sourceUrl);
-      if (!wrapped) return null;
+      const handleTokens = toKeywordTokens([
+        normalizeHandle(competitor.handle),
+        competitor.channel,
+        ...(input.categories ?? []),
+        ...(input.platforms ?? []),
+      ]);
+
+      const wrapped = await fetchWrappedContent(sourceUrl, {
+        kind: "competitor",
+        sourceUrl,
+        competitorHandle: competitor.handle,
+        requiredKeywords: handleTokens,
+      });
+      if (!wrapped.result) return { item: null, reason: wrapped.reason };
 
       return {
+        reason: undefined,
+        item: {
         id: `research-${Date.now()}-${index}`,
         competitorHandle: competitor.handle.startsWith("@") ? competitor.handle : `@${competitor.handle}`,
         channel: competitor.channel,
-        sourceUrl: wrapped.sourceUrl,
-        title: wrapped.title,
-        snippet: wrapped.snippet,
-        hashtags: wrapped.hashtags,
+        sourceUrl: wrapped.result.sourceUrl,
+        title: wrapped.result.title,
+        snippet: wrapped.result.snippet,
+        hashtags: wrapped.result.hashtags,
         fetchedAt: now,
-      } as ResearchItem;
+      } as ResearchItem,
+      };
     })
   );
 
-  const trendResults = await fetchTrendingSources({
+  const trendBatch = await fetchTrendingSources({
     platforms: input.platforms,
     categories: input.categories,
     categoryWeights: input.categoryWeights,
+    customHashtags: input.customHashtags,
   });
-  const trendItems: ResearchItem[] = trendResults.map((item, index) => ({
+  const trendItems: ResearchItem[] = trendBatch.results.map((item, index) => ({
     id: `research-trend-${Date.now()}-${index}`,
     competitorHandle: "@trending",
     channel: item.sourceUrl.includes("linkedin.com") ? "linkedin" : "instagram",
@@ -278,8 +458,31 @@ export async function fetchResearchUsingWrapper(input: {
     fetchedAt: now,
   }));
 
-  const items = [...competitorResults.filter((item): item is ResearchItem => Boolean(item)), ...trendItems];
+  const competitorRejections: Record<string, number> = {};
+  const acceptedCompetitorItems = competitorAttempts
+    .map((attempt) => {
+      if (attempt.reason) {
+        competitorRejections[attempt.reason] = (competitorRejections[attempt.reason] ?? 0) + 1;
+      }
+      return attempt.item;
+    })
+    .filter((item): item is ResearchItem => Boolean(item));
+
+  const items = [...acceptedCompetitorItems, ...trendItems];
   const trendingHashtags = buildTrendingHashtags(items);
 
-  return { items, trendingHashtags };
+  const mergedReasons: Record<string, number> = { ...competitorRejections };
+  for (const [reason, count] of Object.entries(trendBatch.diagnostics.rejectionReasons)) {
+    mergedReasons[reason] = (mergedReasons[reason] ?? 0) + count;
+  }
+
+  const diagnostics: ResearchFetchDiagnostics = {
+    attemptedSources: userCompetitors.length + trendBatch.diagnostics.attemptedSources,
+    acceptedSources: acceptedCompetitorItems.length + trendBatch.diagnostics.acceptedSources,
+    rejectedSources:
+      userCompetitors.length - acceptedCompetitorItems.length + trendBatch.diagnostics.rejectedSources,
+    rejectionReasons: mergedReasons,
+  };
+
+  return { items, trendingHashtags, diagnostics };
 }
