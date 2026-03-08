@@ -735,6 +735,36 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Connected Accounts</p>
+                <div className="mt-2 space-y-1.5 text-gray-700">
+                  <p>
+                    Facebook pages: {accounts?.pages?.length ?? 0}
+                    {(accounts?.pages?.length ?? 0) > 0
+                      ? ` (${accounts?.pages?.map((page) => page.name).join(", ")})`
+                      : ""}
+                  </p>
+                  <p>
+                    Instagram accounts: {accounts?.instagramAccounts?.length ?? 0}
+                    {(accounts?.instagramAccounts?.length ?? 0) > 0
+                      ? ` (${accounts?.instagramAccounts?.map((ig) => ig.pageName).join(", ")})`
+                      : ""}
+                  </p>
+                  <p>
+                    LinkedIn: {accounts?.linkedin?.connected
+                      ? (accounts.linkedin.profile?.name || "Connected")
+                      : "Not connected"}
+                  </p>
+                  <p>
+                    Twitter/X: {accounts?.twitter?.connected
+                      ? (accounts.twitter.profile?.username
+                          ? `@${accounts.twitter.profile.username}`
+                          : accounts.twitter.profile?.name || "Connected")
+                      : "Not connected"}
+                  </p>
+                </div>
+              </div>
+
               <div className="rounded-xl border border-sun-200 bg-sun-50 p-4 text-sm text-sun-900">
                 First action after finish:
                 <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-sun-800">
