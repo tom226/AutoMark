@@ -3,6 +3,8 @@ import { exchangeTwitterCodeForToken, getTwitterProfile } from "@/lib/twitter";
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
 
+const TWITTER_COOKIE = "sd_twitter_conn";
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -60,6 +62,17 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(`${origin}/dashboard/onboarding?connected=twitter`);
     response.cookies.delete("twitter_oauth_state");
     response.cookies.delete("twitter_code_verifier");
+    response.cookies.set(
+      TWITTER_COOKIE,
+      encodeURIComponent(JSON.stringify(existing.twitter)),
+      {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      },
+    );
     return response;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Twitter connection failed";

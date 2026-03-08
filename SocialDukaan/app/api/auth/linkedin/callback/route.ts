@@ -3,6 +3,8 @@ import { exchangeLinkedInCodeForToken, getLinkedInProfile } from "@/lib/linkedin
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
 
+const LINKEDIN_COOKIE = "sd_linkedin_conn";
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -51,6 +53,17 @@ export async function GET(request: NextRequest) {
 
     const response = NextResponse.redirect(`${origin}/dashboard/onboarding?connected=linkedin`);
     response.cookies.delete("linkedin_oauth_state");
+    response.cookies.set(
+      LINKEDIN_COOKIE,
+      encodeURIComponent(JSON.stringify(existing.linkedin)),
+      {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      },
+    );
     return response;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "LinkedIn connection failed";
