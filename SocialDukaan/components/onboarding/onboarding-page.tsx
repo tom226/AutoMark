@@ -42,6 +42,11 @@ interface AccountsData {
   connectedAt?: string;
   pages: { id: string; name: string }[];
   instagramAccounts: { igId: string; pageId: string; pageName: string }[];
+  oauth?: {
+    metaConfigured: boolean;
+    linkedinConfigured: boolean;
+    twitterConfigured: boolean;
+  };
   linkedin?: {
     connected: boolean;
     connectedAt?: string;
@@ -154,6 +159,15 @@ export default function OnboardingPage() {
     );
   }, [accounts]);
 
+  const anyProviderConfigured = useMemo(() => {
+    if (!accounts?.oauth) return true;
+    return Boolean(
+      accounts.oauth.metaConfigured ||
+        accounts.oauth.linkedinConfigured ||
+        accounts.oauth.twitterConfigured,
+    );
+  }, [accounts]);
+
   const saveProfile = async (patch: Partial<OnboardingProfile>) => {
     setSaving(true);
     try {
@@ -162,12 +176,15 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...profile, ...patch }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      const data = raw ? JSON.parse(raw) : null;
       if (res.ok && data.profile) {
         setProfile(data.profile as OnboardingProfile);
       } else {
         setUrlMsg({ type: "error", text: data.error ?? "Failed to save onboarding data." });
       }
+    } catch {
+      setUrlMsg({ type: "error", text: "Failed to save onboarding data." });
     } finally {
       setSaving(false);
     }
@@ -189,7 +206,9 @@ export default function OnboardingPage() {
     }
 
     if (step === 4) {
-      if (!anyConnected) return "Please connect at least one social account before continuing.";
+      if (!anyConnected && anyProviderConfigured) {
+        return "Please connect at least one social account before continuing.";
+      }
     }
 
     return null;
@@ -537,6 +556,13 @@ export default function OnboardingPage() {
                   )}
                 </div>
               </div>
+
+              {!anyProviderConfigured && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+                  OAuth credentials are not configured in production yet. You can continue onboarding now and connect
+                  accounts later from this step.
+                </div>
+              )}
             </div>
           )}
 

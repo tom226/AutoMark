@@ -42,7 +42,7 @@ export function buildTwitterAuthUrl(params: {
   state: string;
   codeChallenge: string;
 }): string {
-  const clientId = process.env.TWITTER_CLIENT_ID;
+  const clientId = process.env.TWITTER_CLIENT_ID?.trim();
   if (!clientId) {
     throw new Error("TWITTER_CLIENT_ID is not configured");
   }
@@ -72,8 +72,8 @@ export async function exchangeTwitterCodeForToken(params: {
   redirectUri: string;
   codeVerifier: string;
 }): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }> {
-  const clientId = process.env.TWITTER_CLIENT_ID;
-  const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+  const clientId = process.env.TWITTER_CLIENT_ID?.trim();
+  const clientSecret = process.env.TWITTER_CLIENT_SECRET?.trim();
 
   if (!clientId) {
     throw new Error("TWITTER_CLIENT_ID is not configured");

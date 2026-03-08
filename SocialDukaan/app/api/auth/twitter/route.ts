@@ -9,7 +9,7 @@ import { getAppOrigin } from "@/lib/app-origin";
 
 export async function GET(request: Request) {
   try {
-    if (!process.env.TWITTER_CLIENT_ID) {
+    if (!process.env.TWITTER_CLIENT_ID?.trim()) {
       return NextResponse.json(
         {
           error:
