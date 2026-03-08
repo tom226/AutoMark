@@ -344,10 +344,30 @@ export default function OnboardingPage() {
             <div className="rounded-xl border border-page-border bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Connected Accounts</p>
               <div className="mt-2 space-y-1.5 text-sm text-gray-700">
-                <p>Facebook pages: {accounts?.pages?.length ?? 0}</p>
-                <p>Instagram accounts: {accounts?.instagramAccounts?.length ?? 0}</p>
-                <p>LinkedIn: {accounts?.linkedin?.connected ? (accounts.linkedin.profile?.name || "Connected") : "Not connected"}</p>
-                <p>Twitter/X: {accounts?.twitter?.connected ? (accounts.twitter.profile?.username ? `@${accounts.twitter.profile.username}` : "Connected") : "Not connected"}</p>
+                <p>
+                  Facebook pages: {accounts?.pages?.length ?? 0}
+                  {(accounts?.pages?.length ?? 0) > 0
+                    ? ` (${accounts?.pages?.map((page) => page.name).join(", ")})`
+                    : ""}
+                </p>
+                <p>
+                  Instagram accounts: {accounts?.instagramAccounts?.length ?? 0}
+                  {(accounts?.instagramAccounts?.length ?? 0) > 0
+                    ? ` (${accounts?.instagramAccounts?.map((ig) => ig.pageName).join(", ")})`
+                    : ""}
+                </p>
+                <p>
+                  LinkedIn: {accounts?.linkedin?.connected
+                    ? (accounts.linkedin.profile?.name || "Connected")
+                    : "Not connected"}
+                </p>
+                <p>
+                  Twitter/X: {accounts?.twitter?.connected
+                    ? (accounts.twitter.profile?.username
+                        ? `@${accounts.twitter.profile.username}`
+                        : accounts.twitter.profile?.name || "Connected")
+                    : "Not connected"}
+                </p>
               </div>
             </div>
 
