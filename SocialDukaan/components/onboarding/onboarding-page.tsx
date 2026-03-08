@@ -101,6 +101,7 @@ function stepDescription(step: number): string {
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
+  const [summaryOnly, setSummaryOnly] = useState(false);
   const [profile, setProfile] = useState<OnboardingProfile>(DEFAULT_PROFILE);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,7 +139,12 @@ export default function OnboardingPage() {
       const accountsData = await accountsRes.json();
 
       if (profileData?.profile) {
-        setProfile(profileData.profile as OnboardingProfile);
+        const loadedProfile = profileData.profile as OnboardingProfile;
+        setProfile(loadedProfile);
+        if (loadedProfile.onboardingCompleted) {
+          setSummaryOnly(true);
+          setStep(TOTAL_STEPS);
+        }
       }
       setAccounts(accountsData as AccountsData);
     } finally {
@@ -243,6 +249,7 @@ export default function OnboardingPage() {
       completedAt: new Date().toISOString(),
     });
 
+    setSummaryOnly(true);
     setUrlMsg({ type: "success", text: "Onboarding completed. You are ready to create your first post." });
   };
 
@@ -308,6 +315,51 @@ export default function OnboardingPage() {
       {loading ? (
         <div className="card p-8 text-sm text-gray-500">
           <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Loading onboarding...
+        </div>
+      ) : summaryOnly ? (
+        <div className="space-y-5">
+          <div className="card space-y-5 p-6">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <p className="font-semibold">Onboarding complete</p>
+              <p className="mt-1">Your business profile is saved. You can review your details below anytime.</p>
+            </div>
+
+            <div className="grid gap-3 text-sm md:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Business</p>
+                <p className="font-semibold text-gray-900">{profile.businessName || "Not provided"}</p>
+                <p className="text-gray-600">{profile.businessType || "Not selected"}</p>
+                <p className="text-gray-600">Niche: {profile.niche || "Not set"}</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Content Preferences</p>
+                <p className="text-gray-700">Language: {profile.preferredLanguage}</p>
+                <p className="text-gray-700">Goal/week: {profile.postingGoal}</p>
+                <p className="text-gray-700">Objective: {profile.primaryObjective}</p>
+                <p className="text-gray-700">Timezone: {profile.timezone}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-page-border bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Connected Accounts</p>
+              <div className="mt-2 space-y-1.5 text-sm text-gray-700">
+                <p>Facebook pages: {accounts?.pages?.length ?? 0}</p>
+                <p>Instagram accounts: {accounts?.instagramAccounts?.length ?? 0}</p>
+                <p>LinkedIn: {accounts?.linkedin?.connected ? (accounts.linkedin.profile?.name || "Connected") : "Not connected"}</p>
+                <p>Twitter/X: {accounts?.twitter?.connected ? (accounts.twitter.profile?.username ? `@${accounts.twitter.profile.username}` : "Connected") : "Not connected"}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Link href="/dashboard/compose" className="btn-primary px-5 py-2.5 text-sm">
+                Go to Compose
+              </Link>
+              <button onClick={() => setSummaryOnly(false)} className="btn-outline px-5 py-2.5 text-sm">
+                Edit Onboarding Info
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <>
