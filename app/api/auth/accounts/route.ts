@@ -7,6 +7,12 @@ import { loadTokens, clearTokens } from "@/lib/token-store";
  * Does NOT expose access tokens to the client.
  */
 export async function GET() {
+  const oauth = {
+    metaConfigured: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+    linkedinConfigured: Boolean(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
+    twitterConfigured: Boolean(process.env.TWITTER_CLIENT_ID),
+  };
+
   const tokens = await loadTokens();
   if (!tokens) {
     return NextResponse.json({
@@ -15,6 +21,7 @@ export async function GET() {
       instagramAccounts: [],
       linkedin: { connected: false },
       twitter: { connected: false },
+      oauth,
     });
   }
 
@@ -37,6 +44,7 @@ export async function GET() {
       connectedAt: tokens.twitter?.connectedAt,
       profile: tokens.twitter?.profile,
     },
+    oauth,
   });
 }
 

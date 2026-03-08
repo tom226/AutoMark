@@ -28,7 +28,7 @@ export interface LinkedInConnection {
 }
 
 export function buildLinkedInAuthUrl(redirectUri: string, state: string): string {
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  const clientId = process.env.LINKEDIN_CLIENT_ID?.trim();
   if (!clientId || clientId.includes("your_linkedin_client_id_here") || clientId.startsWith("your_")) {
     throw new Error("LINKEDIN_CLIENT_ID is not configured");
   }
@@ -55,8 +55,8 @@ export async function exchangeLinkedInCodeForToken(
   code: string,
   redirectUri: string,
 ): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }> {
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+  const clientId = process.env.LINKEDIN_CLIENT_ID?.trim();
+  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET?.trim();
 
   const invalidClientId =
     !clientId || clientId.includes("your_linkedin_client_id_here") || clientId.startsWith("your_");

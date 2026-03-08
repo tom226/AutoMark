@@ -100,7 +100,11 @@ export async function getOnboardingProfile(): Promise<OnboardingProfile> {
   if (fromFile) return fromFile;
 
   const normalized = normalizeProfile(DEFAULT_PROFILE);
-  await writeProfileToFile(normalized);
+  try {
+    await writeProfileToFile(normalized);
+  } catch {
+    // Vercel/serverless file systems may be read-only. Return default profile without persistence.
+  }
   return normalized;
 }
 
@@ -123,6 +127,10 @@ export async function saveOnboardingProfile(
     return merged;
   }
 
-  await writeProfileToFile(merged);
+  try {
+    await writeProfileToFile(merged);
+  } catch {
+    // Allow onboarding flow to continue even when local file persistence is unavailable.
+  }
   return merged;
 }

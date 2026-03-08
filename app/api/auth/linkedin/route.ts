@@ -5,8 +5,8 @@ import { getAppOrigin } from "@/lib/app-origin";
 
 export async function GET(request: Request) {
   try {
-    const clientId = process.env.LINKEDIN_CLIENT_ID;
-    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+    const clientId = process.env.LINKEDIN_CLIENT_ID?.trim();
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET?.trim();
     const origin = getAppOrigin(request.url);
 
     const invalidClientId =
