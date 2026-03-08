@@ -5,6 +5,7 @@ import {
   getPagesWithInstagram,
   type StoredTokens,
 } from "@/lib/meta";
+import { loadTokens } from "@/lib/token-store";
 import { saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
 
@@ -45,11 +46,15 @@ export async function GET(request: Request) {
         pageName: p.name,
       }));
 
+    const existing = await loadTokens();
+
     const stored: StoredTokens = {
       userToken: longToken,
       pages,
       instagramAccounts,
-      connectedAt: new Date().toISOString(),
+      connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+      linkedin: existing?.linkedin,
+      twitter: existing?.twitter,
     };
 
     // Save tokens to file (dev) or database (production)

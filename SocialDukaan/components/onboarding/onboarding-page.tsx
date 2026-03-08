@@ -105,7 +105,7 @@ export default function OnboardingPage() {
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectingProvider, setDisconnectingProvider] = useState<string | null>(null);
   const [urlMsg, setUrlMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   useEffect(() => {
@@ -246,18 +246,23 @@ export default function OnboardingPage() {
     setUrlMsg({ type: "success", text: "Onboarding completed. You are ready to create your first post." });
   };
 
-  const disconnect = async () => {
-    setDisconnecting(true);
-    await fetch("/api/auth/accounts", { method: "DELETE" });
-    setAccounts({
-      connected: false,
-      pages: [],
-      instagramAccounts: [],
-      linkedin: { connected: false },
-      twitter: { connected: false },
-    });
-    setDisconnecting(false);
-    setUrlMsg({ type: "success", text: "Accounts disconnected." });
+  const disconnectProvider = async (
+    provider: "all" | "meta" | "facebook" | "instagram" | "linkedin" | "twitter",
+  ) => {
+    setDisconnectingProvider(provider);
+    try {
+      await fetch(`/api/auth/accounts?provider=${provider}`, { method: "DELETE" });
+      await loadAll();
+      setUrlMsg({
+        type: "success",
+        text:
+          provider === "all"
+            ? "All accounts disconnected."
+            : `${provider[0].toUpperCase()}${provider.slice(1)} disconnected successfully.`,
+      });
+    } finally {
+      setDisconnectingProvider(null);
+    }
   };
 
   const progressPercent = Math.round((step / TOTAL_STEPS) * 100);
@@ -471,45 +476,103 @@ export default function OnboardingPage() {
                   </div>
                 </div>
 
-                {accounts?.pages?.length || accounts?.instagramAccounts?.length ? (
-                  <div className="space-y-3">
-                    {accounts.pages.length > 0 && (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">Connected Facebook Pages</p>
-                        {accounts.pages.map((p) => (
-                          <div key={p.id} className="flex items-center gap-2 text-sm text-emerald-800">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                            {p.name}
-                          </div>
-                        ))}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Facebook className="h-4 w-4 text-channel-facebook" />
+                        <p className="font-semibold text-gray-900">Facebook</p>
                       </div>
+                      <span className={cn("badge", (accounts?.pages?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+                        {(accounts?.pages?.length ?? 0) > 0 ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
+
+                    {(accounts?.pages?.length ?? 0) > 0 ? (
+                      <>
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">Connected Facebook Pages</p>
+                          {accounts?.pages?.map((p) => (
+                            <div key={p.id} className="flex items-center gap-2 text-sm text-emerald-800">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                              {p.name}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => disconnectProvider("facebook")}
+                            disabled={disconnectingProvider === "facebook"}
+                            className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                          >
+                            {disconnectingProvider === "facebook" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                            Logout
+                          </button>
+                          <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
+                            Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                        Connect Facebook <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                      </a>
                     )}
-                    {accounts.instagramAccounts.length > 0 && (
-                      <div className="rounded-xl border border-pink-200 bg-pink-50 p-4 space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-pink-700">Connected Instagram Accounts</p>
-                        {accounts.instagramAccounts.map((ig) => (
-                          <div key={ig.igId} className="flex items-center gap-2 text-sm text-pink-800">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-pink-500" />
-                            {ig.pageName}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={disconnect}
-                      disabled={disconnecting}
-                      className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-red-600"
-                    >
-                      {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                      Disconnect accounts
-                    </button>
                   </div>
-                ) : (
-                  <a href="/api/auth/meta" className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-sm">
-                    <Facebook className="h-4 w-4" />
-                    Connect with Facebook
-                    <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                  </a>
+
+                  <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Instagram className="h-4 w-4 text-channel-instagram" />
+                        <p className="font-semibold text-gray-900">Instagram</p>
+                      </div>
+                      <span className={cn("badge", (accounts?.instagramAccounts?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+                        {(accounts?.instagramAccounts?.length ?? 0) > 0 ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
+
+                    {(accounts?.instagramAccounts?.length ?? 0) > 0 ? (
+                      <>
+                        <div className="rounded-xl border border-pink-200 bg-pink-50 p-3 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-widest text-pink-700">Connected Instagram Accounts</p>
+                          {accounts?.instagramAccounts?.map((ig) => (
+                            <div key={ig.igId} className="flex items-center gap-2 text-sm text-pink-800">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-pink-500" />
+                              {ig.pageName}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => disconnectProvider("instagram")}
+                            disabled={disconnectingProvider === "instagram"}
+                            className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                          >
+                            {disconnectingProvider === "instagram" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                            Logout
+                          </button>
+                          <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
+                            Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                        Connect Instagram <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {anyConnected && (
+                  <button
+                    onClick={() => disconnectProvider("all")}
+                    disabled={disconnectingProvider === "all"}
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-red-600"
+                  >
+                    {disconnectingProvider === "all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                    Disconnect all connected accounts
+                  </button>
                 )}
               </div>
 
@@ -525,9 +588,25 @@ export default function OnboardingPage() {
                     </span>
                   </div>
                   {accounts?.linkedin?.connected ? (
-                    <p className="text-xs text-emerald-700">
-                      Connected as {accounts.linkedin?.profile?.name || "LinkedIn account"}
-                    </p>
+                    <div className="space-y-2">
+                      <p className="text-xs text-emerald-700">
+                        Connected as {accounts.linkedin?.profile?.name || "LinkedIn account"}
+                        {accounts.linkedin?.profile?.email ? ` (${accounts.linkedin.profile.email})` : ""}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => disconnectProvider("linkedin")}
+                          disabled={disconnectingProvider === "linkedin"}
+                          className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          {disconnectingProvider === "linkedin" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                          Logout
+                        </button>
+                        <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                          Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                        </a>
+                      </div>
+                    </div>
                   ) : (
                     <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
                       Connect LinkedIn <ExternalLink className="h-3.5 w-3.5 opacity-70" />
@@ -546,9 +625,24 @@ export default function OnboardingPage() {
                     </span>
                   </div>
                   {accounts?.twitter?.connected ? (
-                    <p className="text-xs text-emerald-700">
-                      Connected as {accounts.twitter?.profile?.username ? `@${accounts.twitter.profile.username}` : "Twitter account"}
-                    </p>
+                    <div className="space-y-2">
+                      <p className="text-xs text-emerald-700">
+                        Connected as {accounts.twitter?.profile?.username ? `@${accounts.twitter.profile.username}` : accounts.twitter?.profile?.name || "Twitter account"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => disconnectProvider("twitter")}
+                          disabled={disconnectingProvider === "twitter"}
+                          className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          {disconnectingProvider === "twitter" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                          Logout
+                        </button>
+                        <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                          Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                        </a>
+                      </div>
+                    </div>
                   ) : (
                     <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
                       Connect Twitter / X <ExternalLink className="h-3.5 w-3.5 opacity-70" />

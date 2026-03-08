@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadTokens, clearTokens } from "@/lib/token-store";
+import { saveTokens } from "@/lib/token-store";
 
 /**
  * GET /api/auth/accounts
@@ -50,9 +51,52 @@ export async function GET() {
 
 /**
  * DELETE /api/auth/accounts
- * Disconnects all accounts.
+ * Disconnects all accounts or a specific provider using ?provider=
+ * Supported values: all | meta | facebook | instagram | linkedin | twitter
  */
-export async function DELETE() {
-  await clearTokens();
-  return NextResponse.json({ disconnected: true });
+export async function DELETE(request: Request) {
+  const url = new URL(request.url);
+  const provider = (url.searchParams.get("provider") ?? "all").toLowerCase();
+
+  if (provider === "all") {
+    await clearTokens();
+    return NextResponse.json({ disconnected: true, provider: "all" });
+  }
+
+  const tokens = await loadTokens();
+  if (!tokens) {
+    return NextResponse.json({ disconnected: true, provider, noop: true });
+  }
+
+  if (provider === "meta" || provider === "facebook") {
+    tokens.pages = [];
+    tokens.userToken = tokens.instagramAccounts.length > 0 ? tokens.userToken : "";
+  }
+
+  if (provider === "meta" || provider === "instagram") {
+    tokens.instagramAccounts = [];
+    tokens.userToken = tokens.pages.length > 0 ? tokens.userToken : "";
+  }
+
+  if (provider === "linkedin") {
+    delete tokens.linkedin;
+  }
+
+  if (provider === "twitter") {
+    delete tokens.twitter;
+  }
+
+  const hasAnyConnected =
+    tokens.pages.length > 0 ||
+    tokens.instagramAccounts.length > 0 ||
+    Boolean(tokens.linkedin?.accessToken) ||
+    Boolean(tokens.twitter?.accessToken);
+
+  if (!hasAnyConnected) {
+    await clearTokens();
+    return NextResponse.json({ disconnected: true, provider });
+  }
+
+  await saveTokens(tokens);
+  return NextResponse.json({ disconnected: true, provider });
 }
