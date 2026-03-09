@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { loadTokens } from "@/lib/token-store";
+import { saveTokens } from "@/lib/token-store";
 import { publishToChannels } from "@/lib/social-publisher";
 import { validateContentGuardrails } from "@/lib/content-guardrails";
 import { getUserIdFromRequest } from "@/lib/user-session";
+import { mergeCookieConnectionsIntoTokens } from "@/lib/connection-cookies";
 
 interface PostPayload {
   channels: ("instagram" | "facebook" | "twitter")[];
@@ -22,7 +24,18 @@ interface PostPayload {
  */
 export async function POST(request: Request) {
   const userId = getUserIdFromRequest(request);
-  const tokens = await loadTokens(userId);
+  let tokens = await loadTokens(userId);
+  const merged = mergeCookieConnectionsIntoTokens(tokens, request);
+  tokens = merged.tokens;
+
+  if (merged.changed && tokens) {
+    try {
+      await saveTokens(tokens, userId);
+    } catch {
+      // Ignore persistence failures in serverless file systems.
+    }
+  }
+
   if (!tokens) {
     return NextResponse.json(
       { error: "No social accounts connected. Please connect your accounts first at /dashboard/onboarding" },

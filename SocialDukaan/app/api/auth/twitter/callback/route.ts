@@ -3,8 +3,7 @@ import { exchangeTwitterCodeForToken, getTwitterProfile } from "@/lib/twitter";
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
 import { getUserIdFromRequest } from "@/lib/user-session";
-
-const TWITTER_COOKIE = "sd_twitter_conn";
+import { TWITTER_COOKIE } from "@/lib/connection-cookies";
 
 export async function GET(request: NextRequest) {
   const userId = getUserIdFromRequest(request);
@@ -66,7 +65,15 @@ export async function GET(request: NextRequest) {
     response.cookies.delete("twitter_code_verifier");
     response.cookies.set(
       TWITTER_COOKIE,
-      encodeURIComponent(JSON.stringify(existing.twitter)),
+      encodeURIComponent(
+        JSON.stringify({
+          connectedAt: existing.twitter.connectedAt,
+          accessToken: existing.twitter.accessToken,
+          refreshToken: existing.twitter.refreshToken,
+          expiresAt: existing.twitter.expiresAt,
+          profile: existing.twitter.profile,
+        }),
+      ),
       {
         httpOnly: true,
         sameSite: "lax",

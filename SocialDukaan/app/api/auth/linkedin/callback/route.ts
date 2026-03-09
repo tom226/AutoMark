@@ -3,8 +3,7 @@ import { exchangeLinkedInCodeForToken, getLinkedInProfile } from "@/lib/linkedin
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
 import { getUserIdFromRequest } from "@/lib/user-session";
-
-const LINKEDIN_COOKIE = "sd_linkedin_conn";
+import { LINKEDIN_COOKIE } from "@/lib/connection-cookies";
 
 export async function GET(request: NextRequest) {
   const userId = getUserIdFromRequest(request);
@@ -57,7 +56,15 @@ export async function GET(request: NextRequest) {
     response.cookies.delete("linkedin_oauth_state");
     response.cookies.set(
       LINKEDIN_COOKIE,
-      encodeURIComponent(JSON.stringify(existing.linkedin)),
+      encodeURIComponent(
+        JSON.stringify({
+          connectedAt: existing.linkedin.connectedAt,
+          accessToken: existing.linkedin.accessToken,
+          refreshToken: existing.linkedin.refreshToken,
+          expiresAt: existing.linkedin.expiresAt,
+          profile: existing.linkedin.profile,
+        }),
+      ),
       {
         httpOnly: true,
         sameSite: "lax",

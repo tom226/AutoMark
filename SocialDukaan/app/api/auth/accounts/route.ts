@@ -2,18 +2,13 @@ import { NextResponse } from "next/server";
 import { loadTokens, clearTokens } from "@/lib/token-store";
 import { saveTokens } from "@/lib/token-store";
 import { getUserIdFromRequest } from "@/lib/user-session";
-
-const LINKEDIN_COOKIE = "sd_linkedin_conn";
-const TWITTER_COOKIE = "sd_twitter_conn";
-
-function parseCookieJson<T>(value?: string): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(decodeURIComponent(value)) as T;
-  } catch {
-    return null;
-  }
-}
+import {
+  LINKEDIN_COOKIE,
+  TWITTER_COOKIE,
+  getLinkedInCookiePayload,
+  getTwitterCookiePayload,
+  mergeCookieConnectionsIntoTokens,
+} from "@/lib/connection-cookies";
 
 /**
  * GET /api/auth/accounts
@@ -29,62 +24,43 @@ export async function GET(request: Request) {
   };
 
   let tokens = await loadTokens(userId);
+  const linkedinFromCookie = getLinkedInCookiePayload(request);
+  const twitterFromCookie = getTwitterCookiePayload(request);
 
-  const linkedinFromCookie = parseCookieJson<{
-    accessToken: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    profile?: { id?: string; name?: string; email?: string; picture?: string };
-    connectedAt: string;
-  }>(request.headers.get("cookie")?.match(/(?:^|; )sd_linkedin_conn=([^;]+)/)?.[1]);
-
-  const twitterFromCookie = parseCookieJson<{
-    accessToken: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    profile?: { id?: string; username?: string; name?: string };
-    connectedAt: string;
-  }>(request.headers.get("cookie")?.match(/(?:^|; )sd_twitter_conn=([^;]+)/)?.[1]);
-
-  if (!tokens && (linkedinFromCookie || twitterFromCookie)) {
-    tokens = {
-      userToken: "",
-      pages: [],
-      instagramAccounts: [],
-      connectedAt: new Date().toISOString(),
-      linkedin: linkedinFromCookie ?? undefined,
-      twitter: twitterFromCookie ?? undefined,
-    };
-    await saveTokens(tokens, userId);
-  } else if (tokens) {
-    let changed = false;
-    if (!tokens.linkedin?.accessToken && linkedinFromCookie?.accessToken) {
-      tokens.linkedin = linkedinFromCookie;
-      changed = true;
-    }
-    if (!tokens.twitter?.accessToken && twitterFromCookie?.accessToken) {
-      tokens.twitter = twitterFromCookie;
-      changed = true;
-    }
-    if (changed) {
+  const merged = mergeCookieConnectionsIntoTokens(tokens, request);
+  tokens = merged.tokens;
+  if (merged.changed && tokens) {
+    try {
       await saveTokens(tokens, userId);
+    } catch {
+      // Cookie-backed fallback still allows account state to be shown in serverless runtimes.
     }
   }
 
   if (!tokens) {
+    const linkedinConnected = Boolean(linkedinFromCookie);
+    const twitterConnected = Boolean(twitterFromCookie);
     return NextResponse.json({
-      connected: false,
+      connected: linkedinConnected || twitterConnected,
       pages: [],
       instagramAccounts: [],
-      linkedin: { connected: false },
-      twitter: { connected: false },
+      linkedin: {
+        connected: linkedinConnected,
+        connectedAt: linkedinFromCookie?.connectedAt,
+        profile: linkedinFromCookie?.profile,
+      },
+      twitter: {
+        connected: twitterConnected,
+        connectedAt: twitterFromCookie?.connectedAt,
+        profile: twitterFromCookie?.profile,
+      },
       oauth,
     });
   }
 
   const metaConnected = tokens.pages.length > 0 || tokens.instagramAccounts.length > 0;
-  const linkedinConnected = Boolean(tokens.linkedin?.accessToken);
-  const twitterConnected = Boolean(tokens.twitter?.accessToken);
+  const linkedinConnected = Boolean(tokens.linkedin?.accessToken) || Boolean(linkedinFromCookie);
+  const twitterConnected = Boolean(tokens.twitter?.accessToken) || Boolean(twitterFromCookie);
 
   return NextResponse.json({
     connected: metaConnected || linkedinConnected || twitterConnected,
@@ -93,13 +69,13 @@ export async function GET(request: Request) {
     instagramAccounts: tokens.instagramAccounts,
     linkedin: {
       connected: linkedinConnected,
-      connectedAt: tokens.linkedin?.connectedAt,
-      profile: tokens.linkedin?.profile,
+      connectedAt: tokens.linkedin?.connectedAt ?? linkedinFromCookie?.connectedAt,
+      profile: tokens.linkedin?.profile ?? linkedinFromCookie?.profile,
     },
     twitter: {
       connected: twitterConnected,
-      connectedAt: tokens.twitter?.connectedAt,
-      profile: tokens.twitter?.profile,
+      connectedAt: tokens.twitter?.connectedAt ?? twitterFromCookie?.connectedAt,
+      profile: tokens.twitter?.profile ?? twitterFromCookie?.profile,
     },
     oauth,
   });

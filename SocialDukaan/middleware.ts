@@ -9,12 +9,18 @@ import {
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const search = request.nextUrl.searchParams;
   const existing = request.cookies.get(USER_SESSION_COOKIE)?.value;
   const sessionId = sanitizeUserId(existing);
 
   if (pathname.startsWith("/dashboard")) {
     const onboardingDone = request.cookies.get(ONBOARDING_COMPLETE_COOKIE)?.value === "1";
     const onboardingRoute = pathname === "/dashboard/onboarding" || pathname.startsWith("/dashboard/onboarding/");
+    const onboardingFlowParams =
+      search.has("error") ||
+      search.has("connected") ||
+      search.has("manage") ||
+      search.has("switch");
 
     if (!onboardingDone && !onboardingRoute) {
       const redirectUrl = request.nextUrl.clone();
@@ -34,7 +40,7 @@ export function middleware(request: NextRequest) {
       return response;
     }
 
-    if (onboardingDone && onboardingRoute) {
+    if (onboardingDone && onboardingRoute && !onboardingFlowParams) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/dashboard";
       const response = NextResponse.redirect(redirectUrl);
