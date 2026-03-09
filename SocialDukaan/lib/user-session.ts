@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 export const USER_SESSION_COOKIE = "sd_user_id";
+export const ONBOARDING_COMPLETE_COOKIE = "sd_onboarding_done";
 
 function readCookieFromHeader(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
