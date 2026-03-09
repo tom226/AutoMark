@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { ApiResponse } from '@/lib/types'
+import { getResearchSnapshot } from '@/lib/research-store'
 
 interface TrendingItem {
   id: string
@@ -15,86 +16,69 @@ interface TrendingItem {
   icon: string
 }
 
+function normalizeTag(tag: string): string {
+  return tag.replace(/^#+/, '').trim().toLowerCase()
+}
+
+function toMomentum(count: number): TrendingItem['momentum'] {
+  if (count >= 15) return 'rising'
+  if (count >= 6) return 'stable'
+  return 'declining'
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const niche = searchParams.get('niche') || 'general'
     const language = searchParams.get('language') || 'en'
 
-    // Mock trending data for India
-    const trendingTopics: TrendingItem[] = [
-      {
-        id: 'trend_1',
-        type: 'hashtag',
-        title: '#IndianStartups',
-        description: 'Startups making waves in India',
-        reach: 2400000,
-        momentum: 'rising',
-        relatedHashtags: ['#entrepreneurship', '#innovation', '#tech'],
-        actionUrl: '/compose?topic=IndianStartups',
-        icon: '🚀',
-      },
-      {
-        id: 'trend_2',
-        type: 'festival',
-        title: 'Diwali Preparation',
-        description: 'Content ideas for Diwali season',
-        reach: 5600000,
-        momentum: 'rising',
-        relatedHashtags: ['#diwali', '#festivities', '#shopping'],
-        actionUrl: '/compose?topic=diwali',
-        icon: '🪔',
-      },
-      {
-        id: 'trend_3',
-        type: 'meme',
-        title: 'Reel Trends - Dancing',
-        description: 'Popular dance formats and audio',
-        reach: 3200000,
-        momentum: 'stable',
-        relatedHashtags: ['#reels', '#dancing', '#viral'],
-        actionUrl: '/compose?type=reel&topic=dance',
-        icon: '💃',
-      },
-      {
-        id: 'trend_4',
-        type: 'hook',
-        title: 'Behind-the-Scenes Content',
-        description: 'Authentic BTS content is getting high engagement',
-        reach: 1800000,
-        momentum: 'rising',
-        relatedHashtags: ['#bts', '#authentic', '#dayinmylife'],
-        actionUrl: '/compose?topic=behind-the-scenes',
-        icon: '🎥',
-      },
-      {
-        id: 'trend_5',
-        type: 'audio',
-        title: 'Trending Bollywood Audio',
-        description: 'Latest Bollywood song being used in Reels',
-        reach: 4100000,
-        momentum: 'stable',
-        relatedHashtags: ['#bollywood', '#music', '#reels'],
-        actionUrl: '/compose?type=reel',
-        icon: '🎵',
-      },
-    ]
+    const snapshot = await getResearchSnapshot()
+    const itemByTag = new Map<string, Set<string>>()
 
-    // Filter by niche (mock logic)
-    let filtered = trendingTopics
-
-    if (niche && niche !== 'general') {
-      const nicheFilters: Record<string, string[]> = {
-        restaurant: ['#food', '#foodie', '#cooking'],
-        fashion: ['#outfit', '#style', '#ootd'],
-        fitness: ['#workout', '#gym', '#fitnessjourney'],
-      }
-
-      const keywords = nicheFilters[niche] || []
-      if (keywords.length > 0) {
-        // In real app, would filter by niche
+    for (const item of snapshot.items) {
+      const normalized = item.hashtags.map((tag) => normalizeTag(tag)).filter(Boolean)
+      for (const tag of normalized) {
+        if (!itemByTag.has(tag)) itemByTag.set(tag, new Set<string>())
+        const relatedSet = itemByTag.get(tag)
+        if (!relatedSet) continue
+        for (const rel of normalized) {
+          if (rel !== tag) relatedSet.add(rel)
+        }
       }
     }
+
+    const trends: TrendingItem[] = snapshot.trendingHashtags
+      .map((entry, index) => {
+        const normalizedTag = normalizeTag(entry.tag)
+        const relatedTags = Array.from(itemByTag.get(normalizedTag) ?? []).slice(0, 5)
+        const title = `#${normalizedTag}`
+
+        return {
+          id: `trend-${index}-${normalizedTag || 'unknown'}`,
+          type: 'hashtag' as const,
+          title,
+          description: `Seen in ${entry.sources.length} research source${entry.sources.length === 1 ? '' : 's'}`,
+          reach: Math.max(entry.count * 1000, 1000),
+          momentum: toMomentum(entry.count),
+          relatedHashtags: relatedTags.map((tag) => `#${tag}`),
+          actionUrl: `/compose?topic=${encodeURIComponent(normalizedTag)}`,
+          icon: '📈',
+        }
+      })
+      .filter((item) => Boolean(normalizeTag(item.title)))
+
+    const filtered =
+      niche === 'general'
+        ? trends
+        : trends.filter((item) => {
+            const haystack = `${item.title} ${item.description} ${item.relatedHashtags.join(' ')}`.toLowerCase()
+            return haystack.includes(niche.toLowerCase())
+          })
+
+    const message =
+      filtered.length > 0
+        ? `Showing ${filtered.length} research-backed trends for ${niche} (${language})`
+        : `No trend data available yet for ${niche}. Run research to populate trends.`
 
     return NextResponse.json(
       {
@@ -103,7 +87,7 @@ export async function GET(request: NextRequest) {
           trends: filtered,
           refreshedAt: new Date().toISOString(),
           refreshIn: 4 * 60 * 60 * 1000, // 4 hours
-          message: `Showing ${filtered.length} trending topics for ${niche}`,
+          message,
         },
       } as ApiResponse<any>,
       { status: 200 },

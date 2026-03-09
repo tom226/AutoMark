@@ -1,6 +1,36 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import TopNav from "@/components/layout/top-nav";
 
+interface SettingsProfile {
+  businessName: string;
+}
+
+interface SettingsAccounts {
+  linkedin?: {
+    profile?: { email?: string };
+  };
+}
+
 export default function SettingsPage() {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/onboarding", { cache: "no-store" }).then((res) => res.json()),
+      fetch("/api/auth/accounts", { cache: "no-store" }).then((res) => res.json()),
+    ])
+      .then(([onboardingData, accountsData]: [{ profile?: SettingsProfile }, SettingsAccounts]) => {
+        setDisplayName(onboardingData?.profile?.businessName?.trim() ?? "");
+        setEmail(accountsData?.linkedin?.profile?.email?.trim() ?? "");
+      })
+      .catch(() => {
+        // Keep fields empty for direct user input when data is unavailable.
+      });
+  }, []);
+
   return (
     <>
       <TopNav title="Settings" />
@@ -11,11 +41,21 @@ export default function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Display Name</label>
-              <input className="input" defaultValue="Arpit" />
+              <input
+                className="input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Enter display name"
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Email</label>
-              <input className="input" defaultValue="arpit@socialdukaan.com" />
+              <input
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter email"
+              />
             </div>
           </div>
         </div>

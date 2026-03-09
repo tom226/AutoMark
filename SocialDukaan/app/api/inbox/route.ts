@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateSmartReplies, analyzeSentiment } from '@/lib/ai-content'
 import { InboxMessage, ApiResponse, SuggestedReply } from '@/lib/types'
+import { loadTokens } from '@/lib/token-store'
+import { getOnboardingProfile } from '@/lib/onboarding-store'
 
 interface InboxResponse {
   messages: InboxMessage[]
@@ -17,42 +19,18 @@ export async function GET(request: NextRequest) {
     const platform = searchParams.get('platform')
     const limit = parseInt(searchParams.get('limit') || '20', 10)
 
-    // Mock inbox data
-    const mockMessages: InboxMessage[] = [
-      {
-        id: 'msg_1',
-        platform: 'instagram',
-        senderName: 'Priya Sharma',
-        senderHandle: '@priya_designs',
-        messageText: 'This design is amazing! Where can I buy?',
-        sentiment: 'positive',
-        status: 'UNREAD',
-        receivedAt: new Date(Date.now() - 30 * 60 * 1000), // 30 min ago
-      },
-      {
-        id: 'msg_2',
-        platform: 'facebook',
-        senderName: 'Raj Patel',
-        senderHandle: 'raj.patel',
-        messageText: 'What are your delivery timings?',
-        sentiment: 'neutral',
-        status: 'UNREAD',
-        receivedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-      {
-        id: 'msg_3',
-        platform: 'instagram',
-        senderName: 'Customer Support',
-        senderHandle: '@customer_care',
-        messageText: 'Is this product still in stock?',
-        sentiment: 'neutral',
-        status: 'READ',
-        receivedAt: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-      },
+    const tokens = await loadTokens()
+    const connectedPlatforms = [
+      ...(tokens?.pages?.length ? ['facebook'] : []),
+      ...(tokens?.instagramAccounts?.length ? ['instagram'] : []),
+      ...(tokens?.linkedin?.accessToken ? ['linkedin'] : []),
+      ...(tokens?.twitter?.accessToken ? ['twitter'] : []),
     ]
 
+    const messages: InboxMessage[] = []
+
     // Filter messages
-    let filtered = mockMessages
+    let filtered = messages
 
     if (filter === 'unread') {
       filtered = filtered.filter((m) => m.status === 'UNREAD')
@@ -68,15 +46,20 @@ export async function GET(request: NextRequest) {
 
     const result: InboxResponse = {
       messages: filtered.slice(0, limit),
-      unreadCount: mockMessages.filter((m) => m.status === 'UNREAD').length,
+      unreadCount: messages.filter((m) => m.status === 'UNREAD').length,
       filter,
     }
+
+    const message =
+      connectedPlatforms.length === 0
+        ? 'Connect at least one social account to sync inbox messages.'
+        : 'No synced inbox messages yet. Messaging sync will appear here once available.'
 
     return NextResponse.json(
       {
         success: true,
         data: result,
-        message: `Showing ${result.messages.length} messages`,
+        message,
       } as ApiResponse<InboxResponse>,
       { status: 200 },
     )
@@ -98,34 +81,45 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { messageId, action, messageText } = body
 
-    if (!messageId || !action) {
+    if (!action) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields: messageId, action',
+          error: 'Missing required field: action',
+        } as ApiResponse<null>,
+        { status: 400 },
+      )
+    }
+
+    if (action !== 'suggest-replies' && !messageId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'messageId is required for this action',
         } as ApiResponse<null>,
         { status: 400 },
       )
     }
 
     // Handle different actions
-    if (action === 'reply') {
-      // In real app, would send reply via platform API
-      return NextResponse.json(
-        {
-          success: true,
-          data: { messageId, status: 'REPLIED', repliedAt: new Date() },
-          message: 'Reply sent successfully',
-        } as ApiResponse<any>,
-        { status: 200 },
-      )
-    } else if (action === 'suggest-replies') {
+    if (action === 'suggest-replies') {
+      if (!messageText || typeof messageText !== 'string') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'messageText is required for suggest-replies',
+          } as ApiResponse<null>,
+          { status: 400 },
+        )
+      }
+
       // Get smart reply suggestions
       const sentiment = await analyzeSentiment(messageText)
+      const profile = await getOnboardingProfile()
       const replies = await generateSmartReplies(messageText, {
         platform: 'instagram',
         sentiment,
-        niche: 'restaurant', // Would come from user data
+        niche: profile.niche || profile.businessType || 'general',
       })
 
       return NextResponse.json(
@@ -142,32 +136,15 @@ export async function POST(request: NextRequest) {
         } as ApiResponse<any>,
         { status: 200 },
       )
-    } else if (action === 'mark-read') {
+    }
+
+    if (action === 'reply' || action === 'mark-read' || action === 'archive' || action === 'star') {
       return NextResponse.json(
         {
-          success: true,
-          data: { messageId, status: 'READ' },
-          message: 'Message marked as read',
-        } as ApiResponse<any>,
-        { status: 200 },
-      )
-    } else if (action === 'archive') {
-      return NextResponse.json(
-        {
-          success: true,
-          data: { messageId, status: 'ARCHIVED' },
-          message: 'Message archived',
-        } as ApiResponse<any>,
-        { status: 200 },
-      )
-    } else if (action === 'star') {
-      return NextResponse.json(
-        {
-          success: true,
-          data: { messageId, status: 'STARRED' },
-          message: 'Message starred',
-        } as ApiResponse<any>,
-        { status: 200 },
+          success: false,
+          error: `${action} is not available until inbox sync is connected for this account.`,
+        } as ApiResponse<null>,
+        { status: 501 },
       )
     }
 

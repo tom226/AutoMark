@@ -1,6 +1,6 @@
 import fs from "fs";
-import path from "path";
-import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { isRedisRestConfigured, redisDel, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { deleteFiles, getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 
 export type PreferredLanguage = "english" | "hindi" | "hinglish";
 export type PrimaryObjective = "sales" | "followers" | "messages" | "awareness";
@@ -18,7 +18,7 @@ export interface OnboardingProfile {
   updatedAt: string;
 }
 
-const ONBOARDING_FILE = path.join(process.cwd(), "tasks", "onboarding-profile.json");
+const ONBOARDING_FILES = getPersistentFileCandidates("tasks/onboarding-profile.json");
 const ONBOARDING_KEY = "socialdukaan:onboarding-profile";
 
 const DEFAULT_PROFILE: OnboardingProfile = {
@@ -74,17 +74,15 @@ function normalizeProfile(input?: Partial<OnboardingProfile>): OnboardingProfile
 
 async function readProfileFromFile(): Promise<OnboardingProfile | null> {
   try {
-    if (!fs.existsSync(ONBOARDING_FILE)) return null;
-    const raw = await fs.promises.readFile(ONBOARDING_FILE, "utf-8");
-    return normalizeProfile(JSON.parse(raw) as Partial<OnboardingProfile>);
+    const profile = await readFirstExistingJson<Partial<OnboardingProfile>>(ONBOARDING_FILES);
+    return profile ? normalizeProfile(profile) : null;
   } catch {
     return null;
   }
 }
 
 async function writeProfileToFile(profile: OnboardingProfile): Promise<void> {
-  await fs.promises.mkdir(path.dirname(ONBOARDING_FILE), { recursive: true });
-  await fs.promises.writeFile(ONBOARDING_FILE, JSON.stringify(profile, null, 2), "utf-8");
+  await writeJsonWithFallback(ONBOARDING_FILES, profile);
 }
 
 export async function getOnboardingProfile(): Promise<OnboardingProfile> {
@@ -133,4 +131,27 @@ export async function saveOnboardingProfile(
     // Allow onboarding flow to continue even when local file persistence is unavailable.
   }
   return merged;
+}
+
+export async function clearOnboardingProfile(): Promise<OnboardingProfile> {
+  const normalized = normalizeProfile({
+    ...DEFAULT_PROFILE,
+    onboardingCompleted: false,
+    completedAt: undefined,
+  });
+
+  if (isRedisRestConfigured()) {
+    await redisDel(ONBOARDING_KEY);
+    await redisSetJson(ONBOARDING_KEY, normalized);
+    return normalized;
+  }
+
+  try {
+    await deleteFiles(ONBOARDING_FILES);
+    await writeProfileToFile(normalized);
+  } catch {
+    // Keep response usable even if file system persistence is unavailable.
+  }
+
+  return normalized;
 }

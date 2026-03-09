@@ -1,6 +1,6 @@
 import fs from "fs";
-import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 import type { Channel, Competitor } from "@/lib/types";
 
 export type VerificationStatus = "unchecked" | "checking" | "verified" | "not_found" | "unknown";
@@ -17,7 +17,7 @@ interface CompetitorState {
   updatedAt: string;
 }
 
-const COMPETITORS_FILE = path.join(process.cwd(), ".competitors.json");
+const COMPETITOR_FILES = getPersistentFileCandidates(".competitors.json");
 const COMPETITORS_KEY = "socialdukaan:competitors";
 
 const seedCompetitors: StoredCompetitor[] = [
@@ -58,16 +58,14 @@ const seedCompetitors: StoredCompetitor[] = [
 
 async function readFileState(): Promise<CompetitorState | null> {
   try {
-    if (!fs.existsSync(COMPETITORS_FILE)) return null;
-    const raw = await fs.promises.readFile(COMPETITORS_FILE, "utf-8");
-    return JSON.parse(raw) as CompetitorState;
+    return await readFirstExistingJson<CompetitorState>(COMPETITOR_FILES);
   } catch {
     return null;
   }
 }
 
 async function writeFileState(state: CompetitorState): Promise<void> {
-  await fs.promises.writeFile(COMPETITORS_FILE, JSON.stringify(state, null, 2), "utf-8");
+  await writeJsonWithFallback(COMPETITOR_FILES, state);
 }
 
 export async function loadCompetitorState(): Promise<CompetitorState> {

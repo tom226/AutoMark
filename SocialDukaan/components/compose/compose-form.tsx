@@ -29,8 +29,13 @@ interface AccountsData {
   connectedAt?: string;
   pages: { id: string; name: string }[];
   instagramAccounts: { igId: string; pageId: string; pageName: string }[];
+  linkedin?: {
+    connected: boolean;
+    profile?: { id?: string; name?: string; email?: string; picture?: string };
+  };
   twitter?: {
     connected: boolean;
+    profile?: { id?: string; username?: string; name?: string };
   };
 }
 
@@ -61,6 +66,14 @@ interface ContentFixResponse {
   afterScore?: number;
   message?: string;
   error?: string;
+}
+
+interface OnboardingData {
+  profile?: {
+    niche?: string;
+    primaryObjective?: string;
+    businessType?: string;
+  };
 }
 
 const channels = [
@@ -96,9 +109,13 @@ const MAX_CHARS = 2200;
 
 export default function ComposeForm() {
   const [selected, setSelected] = useState<ChannelKey[]>(["instagram"]);
+  const [activeChannel, setActiveChannel] = useState<ChannelKey>("instagram");
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(true);
-  const [selectedPageId, setSelectedPageId] = useState("");
+  const [selectedInstagramPageId, setSelectedInstagramPageId] = useState("");
+  const [selectedFacebookPageId, setSelectedFacebookPageId] = useState("");
+  const [selectedTwitterAccount, setSelectedTwitterAccount] = useState("primary");
+  const [selectedLinkedinAccount, setSelectedLinkedinAccount] = useState("primary");
   const [caption, setCaption] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [date, setDate] = useState("");
@@ -120,20 +137,29 @@ export default function ComposeForm() {
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixData, setFixData] = useState<ContentFixResponse | null>(null);
+  const [generateError, setGenerateError] = useState("");
 
-  const toggle = (key: ChannelKey) =>
-    setSelected((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
+  const toggle = (key: ChannelKey) => {
+    setSelected((prev) => {
+      if (prev.includes(key)) {
+        const next = prev.filter((k) => k !== key);
+        if (activeChannel === key) {
+          setActiveChannel(next[0] ?? "instagram");
+        }
+        return next;
+      }
+
+      setActiveChannel(key);
+      return [...prev, key];
+    });
+  };
 
   useEffect(() => {
     fetch("/api/auth/accounts")
       .then((response) => response.json())
       .then((data: AccountsData) => {
         setAccounts(data);
-        if (data.pages?.[0]?.id) {
-          setSelectedPageId((prev) => prev || data.pages[0].id);
-        }
+        if (data.pages?.[0]?.id) setSelectedFacebookPageId((prev) => prev || data.pages[0].id);
       })
       .finally(() => setAccountsLoading(false));
   }, []);
@@ -181,8 +207,8 @@ export default function ComposeForm() {
   }, []);
 
   const instagramForSelectedPage = useMemo(
-    () => accounts?.instagramAccounts.find((item) => item.pageId === selectedPageId),
-    [accounts, selectedPageId]
+    () => accounts?.instagramAccounts.find((item) => item.pageId === selectedInstagramPageId),
+    [accounts, selectedInstagramPageId]
   );
 
   const firstInstagramLinkedPageId = useMemo(() => {
@@ -195,30 +221,101 @@ export default function ComposeForm() {
     if (!selected.includes("instagram")) return;
     if (instagramForSelectedPage) return;
     if (!firstInstagramLinkedPageId) return;
-    setSelectedPageId(firstInstagramLinkedPageId);
+    setSelectedInstagramPageId(firstInstagramLinkedPageId);
   }, [selected, instagramForSelectedPage, firstInstagramLinkedPageId]);
+
+  const activeChannelOptions = useMemo(() => {
+    if (!accounts) return [] as { value: string; label: string }[];
+
+    if (activeChannel === "instagram") {
+      return accounts.instagramAccounts.map((item) => ({ value: item.pageId, label: `${item.pageName} (IG linked)` }));
+    }
+
+    if (activeChannel === "facebook") {
+      return accounts.pages.map((page) => ({ value: page.id, label: page.name }));
+    }
+
+    if (activeChannel === "twitter") {
+      if (!accounts.twitter?.connected) return [];
+      const handle = accounts.twitter.profile?.username ? `@${accounts.twitter.profile.username}` : "Connected account";
+      return [{ value: "primary", label: handle }];
+    }
+
+    if (activeChannel === "linkedin") {
+      if (!accounts.linkedin?.connected) return [];
+      const name = accounts.linkedin.profile?.name || "LinkedIn profile";
+      return [{ value: "primary", label: name }];
+    }
+
+    return [];
+  }, [accounts, activeChannel]);
+
+  const activeChannelAccountValue =
+    activeChannel === "instagram"
+      ? selectedInstagramPageId
+      : activeChannel === "facebook"
+        ? selectedFacebookPageId
+        : activeChannel === "twitter"
+          ? selectedTwitterAccount
+          : selectedLinkedinAccount;
+
+  const setActiveChannelAccountValue = (value: string) => {
+    if (activeChannel === "instagram") {
+      setSelectedInstagramPageId(value);
+      return;
+    }
+    if (activeChannel === "facebook") {
+      setSelectedFacebookPageId(value);
+      return;
+    }
+    if (activeChannel === "twitter") {
+      setSelectedTwitterAccount(value);
+      return;
+    }
+    setSelectedLinkedinAccount(value);
+  };
 
   const handleGenerate = async () => {
     if (selected.length === 0) return;
     setGenerating(true);
+    setGenerateError("");
     try {
+      const onboardingRes = await fetch("/api/onboarding", { cache: "no-store" });
+      const onboardingData = (await onboardingRes.json()) as OnboardingData;
+      const niche = onboardingData.profile?.niche?.trim();
+      const objective = onboardingData.profile?.primaryObjective?.trim();
+      const businessType = onboardingData.profile?.businessType?.trim();
+
+      if (!niche) {
+        setGenerateError("Please set your niche in onboarding so AI can generate relevant content.");
+        return;
+      }
+
       const inspirations = feedItems
         .filter((item) => selectedInspirationIds.includes(item.id))
         .map((item) => `${item.handle}: ${item.caption}`);
+
+      const objectiveText = objective ? ` with focus on ${objective}` : "";
+      const businessTypeText = businessType ? ` for a ${businessType}` : "";
+      const topic = `${niche}${businessTypeText}${objectiveText}`;
 
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: "trending marketing tips",
+          topic,
           channel: selected[0],
           inspirations,
         }),
       });
       const data = await res.json();
-      if (data.caption) setCaption(data.caption);
+      if (data.caption) {
+        setCaption(data.caption);
+      } else {
+        setGenerateError("Could not generate content. Please try again.");
+      }
     } catch {
-      /* silently fail */
+      setGenerateError("Could not generate content. Please try again.");
     } finally {
       setGenerating(false);
     }
@@ -243,15 +340,34 @@ export default function ComposeForm() {
       }
 
       const needsMetaPage = supportedChannels.some((c) => c === "instagram" || c === "facebook");
+      const effectiveMetaPageId = supportedChannels.includes("instagram")
+        ? selectedInstagramPageId
+        : selectedFacebookPageId;
 
-      if (needsMetaPage && !selectedPageId) {
+      if (
+        supportedChannels.includes("instagram") &&
+        supportedChannels.includes("facebook") &&
+        selectedInstagramPageId &&
+        selectedFacebookPageId &&
+        selectedInstagramPageId !== selectedFacebookPageId
+      ) {
+        setPostResults({
+          auth: {
+            success: false,
+            error: "For combined Instagram + Facebook posting, choose the same page account in both tabs.",
+          },
+        });
+        return;
+      }
+
+      if (needsMetaPage && !effectiveMetaPageId) {
         setPostResults({ auth: { success: false, error: "Please select a Facebook Page to publish from." } });
         return;
       }
 
       if (supportedChannels.includes("instagram") && !instagramForSelectedPage) {
         if (firstInstagramLinkedPageId) {
-          setSelectedPageId(firstInstagramLinkedPageId);
+          setSelectedInstagramPageId(firstInstagramLinkedPageId);
           setPostResults({
             auth: {
               success: false,
@@ -277,7 +393,7 @@ export default function ComposeForm() {
           channels: supportedChannels,
           caption,
           imageUrl: imageUrl.trim() || undefined,
-          pageId: needsMetaPage ? selectedPageId : undefined,
+          pageId: needsMetaPage ? effectiveMetaPageId : undefined,
         }),
       });
       const data = await res.json();
@@ -318,7 +434,12 @@ export default function ComposeForm() {
         body: JSON.stringify({
           action: "create",
           channel: selected[0],
-          pageId: selectedPageId || undefined,
+          pageId:
+            selected[0] === "instagram"
+              ? selectedInstagramPageId || undefined
+              : selected[0] === "facebook"
+                ? selectedFacebookPageId || undefined
+                : undefined,
           baseCaption: caption,
           topic: "compose-ab-test",
         }),
@@ -490,31 +611,52 @@ export default function ComposeForm() {
         </div>
 
         <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {selected.map((channelKey) => {
+              const channelLabel = channels.find((item) => item.key === channelKey)?.label ?? channelKey;
+              const isActive = activeChannel === channelKey;
+              return (
+                <button
+                  key={`account-tab-${channelKey}`}
+                  onClick={() => setActiveChannel(channelKey)}
+                  className={cn(
+                    "rounded-lg border px-2.5 py-1 text-xs font-medium transition",
+                    isActive
+                      ? "border-sun-300 bg-sun-50 text-sun-700"
+                      : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  {channelLabel}
+                </button>
+              );
+            })}
+          </div>
+
           <label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Page to Post From
+            Account for {channels.find((item) => item.key === activeChannel)?.label}
           </label>
           <div className="relative">
             <select
-              value={selectedPageId}
-              onChange={(e) => setSelectedPageId(e.target.value)}
-              disabled={accountsLoading || !accounts?.connected || (accounts.pages?.length ?? 0) === 0}
+              value={activeChannelAccountValue}
+              onChange={(e) => setActiveChannelAccountValue(e.target.value)}
+              disabled={accountsLoading || activeChannelOptions.length === 0}
               className="input w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 pr-10 text-sm text-gray-700 focus:border-sun-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sun-100 disabled:opacity-50"
             >
-              {accountsLoading && <option value="">Loading pages…</option>}
-              {!accountsLoading && (accounts?.pages?.length ?? 0) === 0 && (
-                <option value="">No connected pages</option>
+              {accountsLoading && <option value="">Loading accounts…</option>}
+              {!accountsLoading && activeChannelOptions.length === 0 && (
+                <option value="">No connected account</option>
               )}
-              {(accounts?.pages ?? []).map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.name}
+              {activeChannelOptions.map((option) => (
+                <option key={`${activeChannel}-${option.value}`} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
-          {selected.includes("instagram") && selectedPageId && !instagramForSelectedPage && (
+          {selected.includes("instagram") && selectedInstagramPageId && !instagramForSelectedPage && (
             <p className="text-xs text-amber-600">
-              Selected page has no linked Instagram Business Account. Instagram post will fail unless you choose a linked page.
+              Selected Instagram account is not linked correctly. Choose an IG-linked account before posting.
             </p>
           )}
           {selected.includes("instagram") && !firstInstagramLinkedPageId && (
@@ -527,9 +669,14 @@ export default function ComposeForm() {
               No connected account found. Connect your account from onboarding before posting.
             </p>
           )}
-          {selected.includes("twitter") && !accounts?.twitter?.connected && (
+          {activeChannel === "twitter" && !accounts?.twitter?.connected && (
             <p className="text-xs text-amber-600">
               Twitter/X is selected but not connected yet. Connect it from onboarding to publish.
+            </p>
+          )}
+          {activeChannel === "linkedin" && !accounts?.linkedin?.connected && (
+            <p className="text-xs text-amber-600">
+              LinkedIn is selected but not connected yet. Connect it from onboarding to publish.
             </p>
           )}
         </div>
@@ -554,6 +701,8 @@ export default function ComposeForm() {
             AI Generate
           </button>
         </div>
+
+        {generateError ? <p className="mb-2 text-xs text-amber-700">{generateError}</p> : null}
 
         <textarea
           value={caption}
@@ -873,7 +1022,8 @@ export default function ComposeForm() {
               posting ||
               !caption.trim() ||
               selected.length === 0 ||
-              (selected.some((c) => c === "instagram" || c === "facebook") && !selectedPageId)
+              (selected.includes("instagram") && !selectedInstagramPageId) ||
+              (selected.includes("facebook") && !selectedFacebookPageId)
             }
             className="btn-primary flex items-center gap-2 rounded-xl bg-sun-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sun-600 disabled:opacity-50"
           >

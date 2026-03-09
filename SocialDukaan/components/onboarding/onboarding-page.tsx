@@ -103,9 +103,12 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [summaryOnly, setSummaryOnly] = useState(false);
   const [profile, setProfile] = useState<OnboardingProfile>(DEFAULT_PROFILE);
+  const [profileDraft, setProfileDraft] = useState<OnboardingProfile>(DEFAULT_PROFILE);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [accounts, setAccounts] = useState<AccountsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resettingProfile, setResettingProfile] = useState(false);
   const [disconnectingProvider, setDisconnectingProvider] = useState<string | null>(null);
   const [urlMsg, setUrlMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
@@ -141,9 +144,10 @@ export default function OnboardingPage() {
       if (profileData?.profile) {
         const loadedProfile = profileData.profile as OnboardingProfile;
         setProfile(loadedProfile);
+        setProfileDraft(loadedProfile);
         if (loadedProfile.onboardingCompleted) {
           setSummaryOnly(true);
-          setStep(TOTAL_STEPS);
+          setStep(4);
         }
       }
       setAccounts(accountsData as AccountsData);
@@ -250,6 +254,7 @@ export default function OnboardingPage() {
     });
 
     setSummaryOnly(true);
+    setStep(4);
     setUrlMsg({ type: "success", text: "Onboarding completed. You are ready to create your first post." });
   };
 
@@ -274,25 +279,302 @@ export default function OnboardingPage() {
 
   const progressPercent = Math.round((step / TOTAL_STEPS) * 100);
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-6 py-2">
-      <div className="rounded-2xl border border-page-border bg-white p-5 shadow-card">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-sun-600">Step {step} of {TOTAL_STEPS}</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-900">{stepTitle(step)}</h2>
-            <p className="mt-1 text-sm text-gray-500">{stepDescription(step)}</p>
+  const startProfileEdit = () => {
+    setProfileDraft(profile);
+    setEditingProfile(true);
+    setUrlMsg(null);
+  };
+
+  const cancelProfileEdit = () => {
+    setProfileDraft(profile);
+    setEditingProfile(false);
+    setUrlMsg(null);
+  };
+
+  const saveProfileEdit = async () => {
+    if (!profileDraft.businessType.trim()) {
+      setUrlMsg({ type: "error", text: "Please select your business type." });
+      return;
+    }
+    if (!profileDraft.niche.trim()) {
+      setUrlMsg({ type: "error", text: "Please enter your niche." });
+      return;
+    }
+
+    await saveProfile({
+      businessName: profileDraft.businessName,
+      businessType: profileDraft.businessType,
+      niche: profileDraft.niche,
+      preferredLanguage: profileDraft.preferredLanguage,
+      postingGoal: profileDraft.postingGoal,
+      primaryObjective: profileDraft.primaryObjective,
+      timezone: profileDraft.timezone,
+    });
+
+    setEditingProfile(false);
+    setUrlMsg({ type: "success", text: "Profile updated successfully." });
+  };
+
+  const resetProfile = async () => {
+    const confirmReset = window.confirm(
+      "Reset your onboarding profile? This clears business preferences and marks onboarding as incomplete.",
+    );
+    if (!confirmReset) return;
+
+    setResettingProfile(true);
+    try {
+      const res = await fetch("/api/onboarding", { method: "DELETE" });
+      const data = (await res.json()) as { profile?: OnboardingProfile; error?: string };
+
+      if (!res.ok || !data.profile) {
+        setUrlMsg({ type: "error", text: data.error ?? "Failed to reset profile." });
+        return;
+      }
+
+      setProfile(data.profile);
+      setProfileDraft(data.profile);
+      setEditingProfile(false);
+      setSummaryOnly(false);
+      setStep(1);
+      setUrlMsg({ type: "success", text: "Profile reset. Please complete onboarding details again." });
+    } catch {
+      setUrlMsg({ type: "error", text: "Failed to reset profile." });
+    } finally {
+      setResettingProfile(false);
+    }
+  };
+
+  const renderConnectionsSection = () => (
+    <div className="space-y-5">
+      <div className="card p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <Facebook className="h-5 w-5 text-channel-facebook" />
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50">
+              <Instagram className="h-5 w-5 text-channel-instagram" />
+            </div>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-xl bg-sun-50 px-3 py-1.5 text-xs font-semibold text-sun-700">
-            <Rocket className="h-3.5 w-3.5" />
-            {progressPercent}% complete
+          <div>
+            <p className="font-semibold text-gray-900">Facebook & Instagram</p>
+            <p className="text-xs text-gray-400">One click connects both via Meta</p>
           </div>
         </div>
 
-        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full bg-sun-500 transition-all" style={{ width: `${progressPercent}%` }} />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Facebook className="h-4 w-4 text-channel-facebook" />
+                <p className="font-semibold text-gray-900">Facebook</p>
+              </div>
+              <span className={cn("badge", (accounts?.pages?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+                {(accounts?.pages?.length ?? 0) > 0 ? "Connected" : "Not connected"}
+              </span>
+            </div>
+
+            {(accounts?.pages?.length ?? 0) > 0 ? (
+              <>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">Connected Facebook Pages</p>
+                  {accounts?.pages?.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 text-sm text-emerald-800">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      {p.name}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => disconnectProvider("facebook")}
+                    disabled={disconnectingProvider === "facebook"}
+                    className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    {disconnectingProvider === "facebook" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                    Logout
+                  </button>
+                  <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
+                    Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                  </a>
+                </div>
+              </>
+            ) : (
+              <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                Connect Facebook <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+              </a>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Instagram className="h-4 w-4 text-channel-instagram" />
+                <p className="font-semibold text-gray-900">Instagram</p>
+              </div>
+              <span className={cn("badge", (accounts?.instagramAccounts?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+                {(accounts?.instagramAccounts?.length ?? 0) > 0 ? "Connected" : "Not connected"}
+              </span>
+            </div>
+
+            {(accounts?.instagramAccounts?.length ?? 0) > 0 ? (
+              <>
+                <div className="rounded-xl border border-pink-200 bg-pink-50 p-3 space-y-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-pink-700">Connected Instagram Accounts</p>
+                  {accounts?.instagramAccounts?.map((ig) => (
+                    <div key={ig.igId} className="flex items-center gap-2 text-sm text-pink-800">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-pink-500" />
+                      {ig.pageName}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => disconnectProvider("instagram")}
+                    disabled={disconnectingProvider === "instagram"}
+                    className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    {disconnectingProvider === "instagram" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                    Logout
+                  </button>
+                  <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
+                    Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                  </a>
+                </div>
+              </>
+            ) : (
+              <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                Connect Instagram <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {anyConnected && (
+          <button
+            onClick={() => disconnectProvider("all")}
+            disabled={disconnectingProvider === "all"}
+            className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-red-600"
+          >
+            {disconnectingProvider === "all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+            Disconnect all connected accounts
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="card p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Linkedin className="h-4 w-4 text-channel-linkedin" />
+              <p className="font-semibold text-gray-900">LinkedIn</p>
+            </div>
+            <span className={cn("badge", accounts?.linkedin?.connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+              {accounts?.linkedin?.connected ? "Connected" : "Not connected"}
+            </span>
+          </div>
+          {accounts?.linkedin?.connected ? (
+            <div className="space-y-2">
+              <p className="text-xs text-emerald-700">
+                Connected as {accounts.linkedin?.profile?.name || "LinkedIn account"}
+                {accounts.linkedin?.profile?.email ? ` (${accounts.linkedin.profile.email})` : ""}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => disconnectProvider("linkedin")}
+                  disabled={disconnectingProvider === "linkedin"}
+                  className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                >
+                  {disconnectingProvider === "linkedin" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                  Logout
+                </button>
+                <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                  Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+              Connect LinkedIn <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+            </a>
+          )}
+        </div>
+
+        <div className="card p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Twitter className="h-4 w-4 text-gray-700" />
+              <p className="font-semibold text-gray-900">Twitter / X</p>
+            </div>
+            <span className={cn("badge", accounts?.twitter?.connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+              {accounts?.twitter?.connected ? "Connected" : "Not connected"}
+            </span>
+          </div>
+          {accounts?.twitter?.connected ? (
+            <div className="space-y-2">
+              <p className="text-xs text-emerald-700">
+                Connected as {accounts.twitter?.profile?.username ? `@${accounts.twitter.profile.username}` : accounts.twitter?.profile?.name || "Twitter account"}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => disconnectProvider("twitter")}
+                  disabled={disconnectingProvider === "twitter"}
+                  className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                >
+                  {disconnectingProvider === "twitter" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                  Logout
+                </button>
+                <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+                  Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                </a>
+              </div>
+            </div>
+          ) : (
+            <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
+              Connect Twitter / X <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+            </a>
+          )}
         </div>
       </div>
+
+      {!anyProviderConfigured && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+          OAuth credentials are not configured in production yet. You can continue onboarding now and connect
+          accounts later from this step.
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 py-2">
+      {summaryOnly ? (
+        <div className="rounded-2xl border border-page-border bg-white p-5 shadow-card">
+          <p className="text-xs font-semibold uppercase tracking-widest text-sun-600">Onboarding Complete</p>
+          <h2 className="mt-1 text-2xl font-bold text-gray-900">Profile & Connections</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage your business profile and connected social accounts from one place.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-page-border bg-white p-5 shadow-card">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-sun-600">Step {step} of {TOTAL_STEPS}</p>
+              <h2 className="mt-1 text-2xl font-bold text-gray-900">{stepTitle(step)}</h2>
+              <p className="mt-1 text-sm text-gray-500">{stepDescription(step)}</p>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-xl bg-sun-50 px-3 py-1.5 text-xs font-semibold text-sun-700">
+              <Rocket className="h-3.5 w-3.5" />
+              {progressPercent}% complete
+            </div>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-full rounded-full bg-sun-500 transition-all" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+      )}
 
       {urlMsg && (
         <div
@@ -321,62 +603,137 @@ export default function OnboardingPage() {
           <div className="card space-y-5 p-6">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
               <p className="font-semibold">Onboarding complete</p>
-              <p className="mt-1">Your business profile is saved. You can review your details below anytime.</p>
+              <p className="mt-1">Your profile is saved. Manage social account connections directly from this page.</p>
             </div>
 
             <div className="grid gap-3 text-sm md:grid-cols-2">
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <p className="text-xs uppercase tracking-wide text-gray-500">Business</p>
-                <p className="font-semibold text-gray-900">{profile.businessName || "Not provided"}</p>
-                <p className="text-gray-600">{profile.businessType || "Not selected"}</p>
-                <p className="text-gray-600">Niche: {profile.niche || "Not set"}</p>
+                {editingProfile ? (
+                  <div className="mt-2 space-y-2">
+                    <input
+                      value={profileDraft.businessName}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, businessName: e.target.value }))}
+                      placeholder="Business name"
+                      className="input"
+                    />
+                    <select
+                      value={profileDraft.businessType}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, businessType: e.target.value }))}
+                      className="input"
+                    >
+                      <option value="">Select business type</option>
+                      {BUSINESS_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={profileDraft.niche}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, niche: e.target.value }))}
+                      placeholder="Niche"
+                      className="input"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-semibold text-gray-900">{profile.businessName || "Not provided"}</p>
+                    <p className="text-gray-600">{profile.businessType || "Not selected"}</p>
+                    <p className="text-gray-600">Niche: {profile.niche || "Not set"}</p>
+                  </>
+                )}
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <p className="text-xs uppercase tracking-wide text-gray-500">Content Preferences</p>
-                <p className="text-gray-700">Language: {profile.preferredLanguage}</p>
-                <p className="text-gray-700">Goal/week: {profile.postingGoal}</p>
-                <p className="text-gray-700">Objective: {profile.primaryObjective}</p>
-                <p className="text-gray-700">Timezone: {profile.timezone}</p>
+                {editingProfile ? (
+                  <div className="mt-2 space-y-2">
+                    <select
+                      value={profileDraft.preferredLanguage}
+                      onChange={(e) =>
+                        setProfileDraft((prev) => ({
+                          ...prev,
+                          preferredLanguage: e.target.value as PreferredLanguage,
+                        }))
+                      }
+                      className="input"
+                    >
+                      <option value="english">English</option>
+                      <option value="hindi">Hindi</option>
+                      <option value="hinglish">Hinglish</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={21}
+                      value={profileDraft.postingGoal}
+                      onChange={(e) =>
+                        setProfileDraft((prev) => ({
+                          ...prev,
+                          postingGoal: Math.max(1, Math.min(21, Number(e.target.value || 1))),
+                        }))
+                      }
+                      className="input"
+                    />
+                    <select
+                      value={profileDraft.primaryObjective}
+                      onChange={(e) =>
+                        setProfileDraft((prev) => ({
+                          ...prev,
+                          primaryObjective: e.target.value as PrimaryObjective,
+                        }))
+                      }
+                      className="input"
+                    >
+                      <option value="sales">Get more sales</option>
+                      <option value="followers">Grow followers</option>
+                      <option value="messages">Get more messages/leads</option>
+                      <option value="awareness">Increase brand awareness</option>
+                    </select>
+                    <input
+                      value={profileDraft.timezone}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, timezone: e.target.value }))}
+                      className="input"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-gray-700">Language: {profile.preferredLanguage}</p>
+                    <p className="text-gray-700">Goal/week: {profile.postingGoal}</p>
+                    <p className="text-gray-700">Objective: {profile.primaryObjective}</p>
+                    <p className="text-gray-700">Timezone: {profile.timezone}</p>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-page-border bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Connected Accounts</p>
-              <div className="mt-2 space-y-1.5 text-sm text-gray-700">
-                <p>
-                  Facebook pages: {accounts?.pages?.length ?? 0}
-                  {(accounts?.pages?.length ?? 0) > 0
-                    ? ` (${accounts?.pages?.map((page) => page.name).join(", ")})`
-                    : ""}
-                </p>
-                <p>
-                  Instagram accounts: {accounts?.instagramAccounts?.length ?? 0}
-                  {(accounts?.instagramAccounts?.length ?? 0) > 0
-                    ? ` (${accounts?.instagramAccounts?.map((ig) => ig.pageName).join(", ")})`
-                    : ""}
-                </p>
-                <p>
-                  LinkedIn: {accounts?.linkedin?.connected
-                    ? (accounts.linkedin.profile?.name || "Connected")
-                    : "Not connected"}
-                </p>
-                <p>
-                  Twitter/X: {accounts?.twitter?.connected
-                    ? (accounts.twitter.profile?.username
-                        ? `@${accounts.twitter.profile.username}`
-                        : accounts.twitter.profile?.name || "Connected")
-                    : "Not connected"}
-                </p>
-              </div>
-            </div>
+            {renderConnectionsSection()}
 
             <div className="flex flex-wrap gap-3">
               <Link href="/dashboard/compose" className="btn-primary px-5 py-2.5 text-sm">
                 Go to Compose
               </Link>
-              <button onClick={() => setSummaryOnly(false)} className="btn-outline px-5 py-2.5 text-sm">
-                Edit Onboarding Info
+              {!editingProfile ? (
+                <button onClick={startProfileEdit} className="btn-outline px-5 py-2.5 text-sm">
+                  Edit Profile
+                </button>
+              ) : (
+                <>
+                  <button onClick={saveProfileEdit} disabled={saving} className="btn-outline px-5 py-2.5 text-sm">
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button onClick={cancelProfileEdit} disabled={saving} className="btn-ghost px-5 py-2.5 text-sm">
+                    Cancel
+                  </button>
+                </>
+              )}
+              <button
+                onClick={resetProfile}
+                disabled={resettingProfile || saving}
+                className="btn-ghost px-5 py-2.5 text-sm text-red-600 hover:bg-red-50"
+              >
+                {resettingProfile ? "Resetting..." : "Reset Profile"}
               </button>
             </div>
           </div>
@@ -530,207 +887,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {step === 4 && (
-            <div className="space-y-5">
-              <div className="card p-6 space-y-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
-                      <Facebook className="h-5 w-5 text-channel-facebook" />
-                    </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50">
-                      <Instagram className="h-5 w-5 text-channel-instagram" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">Facebook & Instagram</p>
-                    <p className="text-xs text-gray-400">One click connects both via Meta</p>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Facebook className="h-4 w-4 text-channel-facebook" />
-                        <p className="font-semibold text-gray-900">Facebook</p>
-                      </div>
-                      <span className={cn("badge", (accounts?.pages?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
-                        {(accounts?.pages?.length ?? 0) > 0 ? "Connected" : "Not connected"}
-                      </span>
-                    </div>
-
-                    {(accounts?.pages?.length ?? 0) > 0 ? (
-                      <>
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">Connected Facebook Pages</p>
-                          {accounts?.pages?.map((p) => (
-                            <div key={p.id} className="flex items-center gap-2 text-sm text-emerald-800">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                              {p.name}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => disconnectProvider("facebook")}
-                            disabled={disconnectingProvider === "facebook"}
-                            className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                          >
-                            {disconnectingProvider === "facebook" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                            Logout
-                          </button>
-                          <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
-                            Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                          </a>
-                        </div>
-                      </>
-                    ) : (
-                      <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                        Connect Facebook <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                      </a>
-                    )}
-                  </div>
-
-                  <div className="rounded-xl border border-page-border bg-white p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Instagram className="h-4 w-4 text-channel-instagram" />
-                        <p className="font-semibold text-gray-900">Instagram</p>
-                      </div>
-                      <span className={cn("badge", (accounts?.instagramAccounts?.length ?? 0) > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
-                        {(accounts?.instagramAccounts?.length ?? 0) > 0 ? "Connected" : "Not connected"}
-                      </span>
-                    </div>
-
-                    {(accounts?.instagramAccounts?.length ?? 0) > 0 ? (
-                      <>
-                        <div className="rounded-xl border border-pink-200 bg-pink-50 p-3 space-y-1.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-widest text-pink-700">Connected Instagram Accounts</p>
-                          {accounts?.instagramAccounts?.map((ig) => (
-                            <div key={ig.igId} className="flex items-center gap-2 text-sm text-pink-800">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-pink-500" />
-                              {ig.pageName}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => disconnectProvider("instagram")}
-                            disabled={disconnectingProvider === "instagram"}
-                            className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                          >
-                            {disconnectingProvider === "instagram" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                            Logout
-                          </button>
-                          <a href="/api/auth/meta" className="btn-outline px-3 py-2 text-xs">
-                            Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                          </a>
-                        </div>
-                      </>
-                    ) : (
-                      <a href="/api/auth/meta" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                        Connect Instagram <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {anyConnected && (
-                  <button
-                    onClick={() => disconnectProvider("all")}
-                    disabled={disconnectingProvider === "all"}
-                    className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-red-600"
-                  >
-                    {disconnectingProvider === "all" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                    Disconnect all connected accounts
-                  </button>
-                )}
-              </div>
-
-              <div className="grid gap-5 md:grid-cols-2">
-                <div className="card p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Linkedin className="h-4 w-4 text-channel-linkedin" />
-                      <p className="font-semibold text-gray-900">LinkedIn</p>
-                    </div>
-                    <span className={cn("badge", accounts?.linkedin?.connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
-                      {accounts?.linkedin?.connected ? "Connected" : "Not connected"}
-                    </span>
-                  </div>
-                  {accounts?.linkedin?.connected ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-emerald-700">
-                        Connected as {accounts.linkedin?.profile?.name || "LinkedIn account"}
-                        {accounts.linkedin?.profile?.email ? ` (${accounts.linkedin.profile.email})` : ""}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => disconnectProvider("linkedin")}
-                          disabled={disconnectingProvider === "linkedin"}
-                          className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          {disconnectingProvider === "linkedin" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                          Logout
-                        </button>
-                        <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                          Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <a href="/api/auth/linkedin" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                      Connect LinkedIn <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                    </a>
-                  )}
-                </div>
-
-                <div className="card p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Twitter className="h-4 w-4 text-gray-700" />
-                      <p className="font-semibold text-gray-900">Twitter / X</p>
-                    </div>
-                    <span className={cn("badge", accounts?.twitter?.connected ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
-                      {accounts?.twitter?.connected ? "Connected" : "Not connected"}
-                    </span>
-                  </div>
-                  {accounts?.twitter?.connected ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-emerald-700">
-                        Connected as {accounts.twitter?.profile?.username ? `@${accounts.twitter.profile.username}` : accounts.twitter?.profile?.name || "Twitter account"}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => disconnectProvider("twitter")}
-                          disabled={disconnectingProvider === "twitter"}
-                          className="btn-ghost px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          {disconnectingProvider === "twitter" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                          Logout
-                        </button>
-                        <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                          Use another account <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <a href="/api/auth/twitter" className="btn-outline inline-flex items-center gap-2 px-4 py-2 text-xs">
-                      Connect Twitter / X <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {!anyProviderConfigured && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
-                  OAuth credentials are not configured in production yet. You can continue onboarding now and connect
-                  accounts later from this step.
-                </div>
-              )}
-            </div>
-          )}
+          {step === 4 && renderConnectionsSection()}
 
           {step === 5 && (
             <div className="card space-y-5 p-6">

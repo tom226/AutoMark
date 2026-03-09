@@ -1,14 +1,14 @@
 import fs from "fs";
-import path from "path";
 import type { Channel, CompetitorFeedItem } from "@/lib/types";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 
 interface CompetitorFeedState {
   items: CompetitorFeedItem[];
   updatedAt: string;
 }
 
-const FEED_FILE = path.join(process.cwd(), ".competitor-feed.json");
+const FEED_FILES = getPersistentFileCandidates(".competitor-feed.json");
 const FEED_KEY = "socialdukaan:competitor-feed";
 
 const seedHandles: Array<{ handle: string; channel: Channel }> = [
@@ -54,16 +54,14 @@ function generateSeedFeed(): CompetitorFeedState {
 
 async function readFileState(): Promise<CompetitorFeedState | null> {
   try {
-    if (!fs.existsSync(FEED_FILE)) return null;
-    const raw = await fs.promises.readFile(FEED_FILE, "utf-8");
-    return JSON.parse(raw) as CompetitorFeedState;
+    return await readFirstExistingJson<CompetitorFeedState>(FEED_FILES);
   } catch {
     return null;
   }
 }
 
 async function writeFileState(state: CompetitorFeedState): Promise<void> {
-  await fs.promises.writeFile(FEED_FILE, JSON.stringify(state, null, 2), "utf-8");
+  await writeJsonWithFallback(FEED_FILES, state);
 }
 
 export async function loadCompetitorFeedState(): Promise<CompetitorFeedState> {

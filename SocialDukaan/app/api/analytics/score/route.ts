@@ -12,6 +12,8 @@ import {
   getScoreColor,
 } from '@/lib/gamification'
 import { AutoMarkScore, ApiResponse } from '@/lib/types'
+import { getOnboardingProfile } from '@/lib/onboarding-store'
+import { listWeeklyTasks } from '@/lib/task-folder-store'
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,30 +74,52 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Return mock user's current score
-    const mockScore: AutoMarkScore = {
-      score: 78,
-      consistency: 85,
-      engagement: 72,
-      growth: 65,
-      reach: 80,
-      responseRate: 75,
-      delta: 5,
-      tips: [
-        '💡 Post 1 more time to reach your goal',
-        '💡 Your Reels get 3x more engagement — post more video content',
-        '🎉 Great job maintaining a 7-day streak!',
-      ],
-      nextMilestone: 'Reach Score 85 — Unlock white-label reports',
+    const profile = await getOnboardingProfile()
+    const tasks = await listWeeklyTasks()
+
+    const now = Date.now()
+    const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000
+
+    const postedThisWeek = tasks.filter((task) => {
+      if (task.status !== 'posted') return false
+      const postedAt = task.postedAt ? new Date(task.postedAt).getTime() : NaN
+      return Number.isFinite(postedAt) && postedAt >= oneWeekAgo
+    })
+
+    const postsThisWeek = postedThisWeek.length
+    const postingGoal = profile.postingGoal || 4
+
+    // Until platform insights are synced, keep unavailable metrics at neutral defaults.
+    const avgEngagementRate = 0
+    const newFollowersWeek = 0
+    const totalFollowers = 0
+    const avgReach = 0
+    const messagesReplied = 0
+    const totalMessages = 0
+
+    const consistency = calculateConsistencyScore(postsThisWeek, postingGoal)
+    const engagement = calculateEngagementScore(avgEngagementRate)
+    const growth = calculateGrowthScore(newFollowersWeek, totalFollowers)
+    const reach = calculateReachScore(avgReach, totalFollowers)
+    const responseRate = calculateResponseRateScore(messagesReplied, totalMessages)
+
+    const liveScore: AutoMarkScore = {
+      ...calculateAutoMarkScore(consistency, engagement, growth, reach, responseRate),
+      delta: 0,
     }
 
     return NextResponse.json(
       {
         success: true,
         data: {
-          ...mockScore,
-          color: getScoreColor(mockScore.score),
-          formatted: formatScore(mockScore.score),
+          ...liveScore,
+          color: getScoreColor(liveScore.score),
+          formatted: formatScore(liveScore.score),
+          source: {
+            postsThisWeek,
+            postingGoal,
+            metricsSynced: false,
+          },
         },
       } as ApiResponse<any>,
       { status: 200 },

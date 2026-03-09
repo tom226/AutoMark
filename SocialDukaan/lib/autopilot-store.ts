@@ -1,10 +1,10 @@
 import fs from "fs";
-import path from "path";
 import {
   isRedisRestConfigured,
   redisGetJson,
   redisSetJson,
 } from "./redis-rest";
+import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "./persistent-file";
 
 export type AutopilotChannel = "instagram" | "facebook";
 
@@ -44,7 +44,7 @@ export interface AutopilotState {
   updatedAt: string;
 }
 
-const AUTOPILOT_FILE = path.join(process.cwd(), ".autopilot.json");
+const AUTOPILOT_FILES = getPersistentFileCandidates(".autopilot.json");
 const AUTOPILOT_KEY = "socialdukaan:autopilot";
 
 export async function loadAutopilotState(): Promise<AutopilotState | null> {
@@ -53,9 +53,7 @@ export async function loadAutopilotState(): Promise<AutopilotState | null> {
   }
 
   try {
-    if (!fs.existsSync(AUTOPILOT_FILE)) return null;
-    const raw = await fs.promises.readFile(AUTOPILOT_FILE, "utf-8");
-    return JSON.parse(raw) as AutopilotState;
+    return await readFirstExistingJson<AutopilotState>(AUTOPILOT_FILES);
   } catch {
     return null;
   }
@@ -69,7 +67,7 @@ export async function saveAutopilotState(state: AutopilotState): Promise<void> {
     return;
   }
 
-  await fs.promises.writeFile(AUTOPILOT_FILE, JSON.stringify(next, null, 2), "utf-8");
+  await writeJsonWithFallback(AUTOPILOT_FILES, next);
 }
 
 export async function ensureAutopilotState(partial?: Partial<AutopilotState>): Promise<AutopilotState> {

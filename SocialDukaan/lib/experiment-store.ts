@@ -1,6 +1,6 @@
 import fs from "fs";
-import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 import type { Experiment, ExperimentVariantKey } from "@/lib/types";
 
 interface ExperimentState {
@@ -8,7 +8,7 @@ interface ExperimentState {
   updatedAt: string;
 }
 
-const EXPERIMENTS_FILE = path.join(process.cwd(), ".experiments.json");
+const EXPERIMENT_FILES = getPersistentFileCandidates(".experiments.json");
 const EXPERIMENTS_KEY = "socialdukaan:experiments";
 
 function rewriteCaptionForVariant(baseCaption: string): string {
@@ -26,16 +26,14 @@ function rewriteCaptionForVariant(baseCaption: string): string {
 
 async function readFileState(): Promise<ExperimentState | null> {
   try {
-    if (!fs.existsSync(EXPERIMENTS_FILE)) return null;
-    const raw = await fs.promises.readFile(EXPERIMENTS_FILE, "utf-8");
-    return JSON.parse(raw) as ExperimentState;
+    return await readFirstExistingJson<ExperimentState>(EXPERIMENT_FILES);
   } catch {
     return null;
   }
 }
 
 async function writeFileState(state: ExperimentState): Promise<void> {
-  await fs.promises.writeFile(EXPERIMENTS_FILE, JSON.stringify(state, null, 2), "utf-8");
+  await writeJsonWithFallback(EXPERIMENT_FILES, state);
 }
 
 export async function loadExperimentState(): Promise<ExperimentState> {

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getOnboardingProfile, saveOnboardingProfile, type OnboardingProfile } from "@/lib/onboarding-store";
+import {
+  clearOnboardingProfile,
+  getOnboardingProfile,
+  saveOnboardingProfile,
+  type OnboardingProfile,
+} from "@/lib/onboarding-store";
 
 export const dynamic = "force-dynamic";
 
@@ -25,4 +30,13 @@ export async function PUT(request: Request) {
 // Backward-compatible write method for older clients that send POST.
 export async function POST(request: Request) {
   return PUT(request);
+}
+
+export async function DELETE() {
+  try {
+    const profile = await clearOnboardingProfile();
+    return NextResponse.json({ profile, reset: true });
+  } catch {
+    return NextResponse.json({ error: "Failed to reset onboarding profile" }, { status: 500 });
+  }
 }

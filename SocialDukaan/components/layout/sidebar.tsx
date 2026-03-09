@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import {
   LayoutDashboard,
@@ -16,7 +16,8 @@ import {
   LinkIcon,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -35,7 +36,20 @@ const links = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/accounts?provider=all", { method: "DELETE" });
+    } finally {
+      router.push("/dashboard/onboarding");
+      router.refresh();
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <aside
@@ -83,6 +97,21 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="px-2 pb-2">
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          title="Logout"
+          className={cn(
+            "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+            "text-gray-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+          )}
+        >
+          <LogOut className="h-[18px] w-[18px] shrink-0 text-gray-400 group-hover:text-red-600" />
+          {!collapsed && (loggingOut ? "Logging out..." : "Logout")}
+        </button>
+      </div>
 
       {/* Collapse toggle */}
       <button

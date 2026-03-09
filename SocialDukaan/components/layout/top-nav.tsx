@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Search, ChevronDown, Sun } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface TopNavProps {
   title?: string;
@@ -9,6 +9,21 @@ interface TopNavProps {
 
 export default function TopNav({ title = "Dashboard" }: TopNavProps) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("Profile");
+
+  useEffect(() => {
+    fetch("/api/onboarding", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data: { profile?: { businessName?: string } }) => {
+        const name = data.profile?.businessName?.trim();
+        if (name) setDisplayName(name);
+      })
+      .catch(() => {
+        // Keep a neutral fallback label.
+      });
+  }, []);
+
+  const avatarText = (displayName[0] ?? "U").toUpperCase();
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-gray-100 bg-white px-6">
@@ -43,9 +58,9 @@ export default function TopNav({ title = "Dashboard" }: TopNavProps) {
         {/* Profile */}
         <button className="ml-2 flex items-center gap-2 rounded-xl border border-gray-100 py-1.5 pl-1.5 pr-3 transition hover:bg-gray-50">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sun-100 text-xs font-bold text-sun-700">
-            A
+            {avatarText}
           </div>
-          <span className="text-sm font-medium text-gray-700">Arpit</span>
+          <span className="text-sm font-medium text-gray-700">{displayName}</span>
           <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
         </button>
       </div>
