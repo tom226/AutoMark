@@ -6,6 +6,8 @@ import {
   Facebook,
   Linkedin,
   Twitter,
+  Video,
+  Globe,
   Plus,
   Trash2,
   Zap,
@@ -59,6 +61,24 @@ const channelMeta: Record<
     icon: Twitter,
     color: "text-channel-twitter",
     bg: "bg-cyan-50",
+  },
+  sharechat: {
+    label: "ShareChat",
+    icon: Globe,
+    color: "text-indigo-700",
+    bg: "bg-indigo-50",
+  },
+  moj: {
+    label: "Moj",
+    icon: Video,
+    color: "text-orange-700",
+    bg: "bg-orange-50",
+  },
+  josh: {
+    label: "Josh",
+    icon: Video,
+    color: "text-rose-700",
+    bg: "bg-rose-50",
   },
 };
 
@@ -380,7 +400,7 @@ export default function CompetitorsPage() {
               <Hash className="mt-0.5 h-4 w-4 flex-shrink-0 text-sun-500" />
               Most used hashtags:{" "}
               <span className="font-medium text-gray-900">
-                #marketing, #growth, #socialmedia
+                #marketing, #sharechat, #moj, #josh
               </span>
             </li>
           </ul>

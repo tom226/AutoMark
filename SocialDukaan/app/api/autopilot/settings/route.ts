@@ -4,6 +4,7 @@ import {
   saveAutopilotState,
   type AutopilotRuleConfig,
 } from "@/lib/autopilot-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface SettingsPayload {
   selectedPageId: string;
@@ -12,8 +13,9 @@ interface SettingsPayload {
   rules: AutopilotRuleConfig[];
 }
 
-export async function GET() {
-  const state = await ensureAutopilotState();
+export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
+  const state = await ensureAutopilotState(undefined, userId);
   return NextResponse.json({
     selectedPageId: state.selectedPageId,
     imageUrl: state.imageUrl,
@@ -25,13 +27,14 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const body = (await request.json()) as SettingsPayload;
 
   if (!body.selectedPageId) {
     return NextResponse.json({ error: "selectedPageId is required" }, { status: 400 });
   }
 
-  const state = await ensureAutopilotState();
+  const state = await ensureAutopilotState(undefined, userId);
   const nextState = {
     ...state,
     selectedPageId: body.selectedPageId,
@@ -40,7 +43,7 @@ export async function PUT(request: Request) {
     rules: Array.isArray(body.rules) ? body.rules : [],
   };
 
-  await saveAutopilotState(nextState);
+  await saveAutopilotState(nextState, userId);
 
   return NextResponse.json({ saved: true });
 }

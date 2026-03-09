@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ApiResponse } from '@/lib/types'
 import { getResearchSnapshot } from '@/lib/research-store'
+import { getUserIdFromRequest } from '@/lib/user-session'
 
 interface TrendingItem {
   id: string
@@ -28,11 +29,12 @@ function toMomentum(count: number): TrendingItem['momentum'] {
 
 export async function GET(request: NextRequest) {
   try {
+    const userId = getUserIdFromRequest(request)
     const searchParams = request.nextUrl.searchParams
     const niche = searchParams.get('niche') || 'general'
     const language = searchParams.get('language') || 'en'
 
-    const snapshot = await getResearchSnapshot()
+    const snapshot = await getResearchSnapshot(userId)
     const itemByTag = new Map<string, Set<string>>()
 
     for (const item of snapshot.items) {

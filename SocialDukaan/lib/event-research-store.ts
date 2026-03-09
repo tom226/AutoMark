@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export interface ResearchedRunningEvent {
   id: string;
@@ -26,59 +27,66 @@ interface EventResearchState {
   updatedAt: string;
 }
 
-const RESEARCH_DIR = path.join(process.cwd(), "tasks");
-const RESEARCH_FILE = path.join(RESEARCH_DIR, "event-research.json");
+const RESEARCH_FILE = "tasks/event-research.json";
 const RESEARCH_KEY = "socialdukaan:event-research";
+
+function getResearchFilePath(userId = "anon"): string {
+  return path.join(process.cwd(), userScopedRelativePath(RESEARCH_FILE, userId));
+}
 
 function makeKey(topic: string, location: string): string {
   return `${topic.toLowerCase().trim()}::${location.toLowerCase().trim()}`;
 }
 
-async function readFileState(): Promise<EventResearchState | null> {
+async function readFileState(userId = "anon"): Promise<EventResearchState | null> {
+  const filePath = getResearchFilePath(userId);
   try {
-    if (!fs.existsSync(RESEARCH_FILE)) return null;
-    const raw = await fs.promises.readFile(RESEARCH_FILE, "utf-8");
+    if (!fs.existsSync(filePath)) return null;
+    const raw = await fs.promises.readFile(filePath, "utf-8");
     return JSON.parse(raw) as EventResearchState;
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: EventResearchState): Promise<void> {
-  await fs.promises.mkdir(RESEARCH_DIR, { recursive: true });
-  await fs.promises.writeFile(RESEARCH_FILE, JSON.stringify(state, null, 2), "utf-8");
+async function writeFileState(state: EventResearchState, userId = "anon"): Promise<void> {
+  const filePath = getResearchFilePath(userId);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, JSON.stringify(state, null, 2), "utf-8");
 }
 
-async function loadState(): Promise<EventResearchState> {
+async function loadState(userId = "anon"): Promise<EventResearchState> {
+  const key = userScopedKey(RESEARCH_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<EventResearchState>(RESEARCH_KEY);
+    const fromRedis = await redisGetJson<EventResearchState>(key);
     if (fromRedis) return fromRedis;
     const fresh: EventResearchState = { records: [], updatedAt: new Date().toISOString() };
-    await redisSetJson(RESEARCH_KEY, fresh);
+    await redisSetJson(key, fresh);
     return fresh;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile) return fromFile;
 
   const fresh: EventResearchState = { records: [], updatedAt: new Date().toISOString() };
-  await writeFileState(fresh);
+  await writeFileState(fresh, userId);
   return fresh;
 }
 
-async function saveState(state: EventResearchState): Promise<void> {
+async function saveState(state: EventResearchState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(RESEARCH_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(RESEARCH_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
-export async function getStoredEventResearch(topic: string, location: string): Promise<EventResearchRecord | null> {
-  const state = await loadState();
+export async function getStoredEventResearch(topic: string, location: string, userId = "anon"): Promise<EventResearchRecord | null> {
+  const state = await loadState(userId);
   const key = makeKey(topic, location);
   return state.records.find((record) => record.key === key) ?? null;
 }
@@ -87,8 +95,8 @@ export async function saveEventResearch(input: {
   topic: string;
   location: string;
   events: ResearchedRunningEvent[];
-}): Promise<EventResearchRecord> {
-  const state = await loadState();
+}, userId = "anon"): Promise<EventResearchRecord> {
+  const state = await loadState(userId);
   const key = makeKey(input.topic, input.location);
 
   const record: EventResearchRecord = {
@@ -106,6 +114,6 @@ export async function saveEventResearch(input: {
     state.records.push(record);
   }
 
-  await saveState(state);
+  await saveState(state, userId);
   return record;
 }

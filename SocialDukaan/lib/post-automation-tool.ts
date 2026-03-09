@@ -15,6 +15,7 @@ export interface PostAutomationRequest {
   campaignTopic?: string;
   tone?: string;
   saveToQueue?: boolean;
+  userId?: string;
 }
 
 export interface AutomationDraft {
@@ -127,11 +128,13 @@ export async function generateAutomatedPostPlan(input: PostAutomationRequest): P
   const tone = input.tone?.trim() || "professional";
   const channels = normalizeChannelList(input.channels);
 
+  const userId = input.userId ?? "anon";
+
   const [prefs, research, competitors, tokens] = await Promise.all([
-    getResearchPreferences(),
-    getResearchSnapshot(),
-    listCompetitors(),
-    loadTokens(),
+    getResearchPreferences(userId),
+    getResearchSnapshot(userId),
+    listCompetitors(userId),
+    loadTokens(userId),
   ]);
 
   const selectedPage = tokens?.pages.find((page) => page.id === input.pageId) ?? tokens?.pages[0];
@@ -225,7 +228,7 @@ export async function generateAutomatedPostPlan(input: PostAutomationRequest): P
   }
 
   if (input.saveToQueue) {
-    await upsertWeeklyTasks(drafts.map((item) => item.task));
+    await upsertWeeklyTasks(drafts.map((item) => item.task), userId);
   }
 
   return {

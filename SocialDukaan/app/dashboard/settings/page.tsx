@@ -13,9 +13,21 @@ interface SettingsAccounts {
   };
 }
 
+interface PricingPlan {
+  id: "starter" | "growth" | "pro";
+  name: string;
+  amountInr: number;
+  features: string[];
+}
+
 export default function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<PricingPlan["id"]>("starter");
+  const [upiId, setUpiId] = useState("socialdukaan@okaxis");
+  const [upiIntent, setUpiIntent] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -30,6 +42,42 @@ export default function SettingsPage() {
         // Keep fields empty for direct user input when data is unavailable.
       });
   }, []);
+
+  useEffect(() => {
+    fetch("/api/pricing/plans", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setPlans(Array.isArray(data?.plans) ? (data.plans as PricingPlan[]) : []);
+      })
+      .catch(() => setPlans([]));
+  }, []);
+
+  const createUpiCheckout = async () => {
+    setPaymentMessage("");
+    setUpiIntent("");
+
+    try {
+      const response = await fetch("/api/payments/upi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: selectedPlan,
+          upiId,
+          businessName: displayName || "SocialDukaan",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setPaymentMessage(data.error || "Could not generate UPI checkout.");
+        return;
+      }
+
+      setUpiIntent(data.upiIntent || "");
+      setPaymentMessage(data.message || "UPI checkout generated.");
+    } catch {
+      setPaymentMessage("Could not generate UPI checkout.");
+    }
+  };
 
   return (
     <>
@@ -89,6 +137,44 @@ export default function SettingsPage() {
               </label>
             ))}
           </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="section-title mb-4">India Pricing & UPI Checkout</h2>
+          <p className="mb-3 text-sm text-gray-500">Pay in INR and complete subscription via UPI.</p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {plans.map((plan) => (
+              <button
+                key={plan.id}
+                onClick={() => setSelectedPlan(plan.id)}
+                className={`rounded-xl border p-3 text-left ${selectedPlan === plan.id ? "border-sun-400 bg-sun-50" : "border-gray-200 bg-white"}`}
+              >
+                <p className="text-sm font-semibold text-gray-900">{plan.name}</p>
+                <p className="mt-1 text-lg font-bold text-sun-600">INR {plan.amountInr}/mo</p>
+                <p className="mt-1 text-xs text-gray-500">{plan.features[0]}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <input
+              className="input"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              placeholder="merchant@upi"
+            />
+            <button onClick={createUpiCheckout} className="btn-primary px-5 py-2.5 text-sm">
+              Generate UPI Checkout
+            </button>
+          </div>
+
+          {paymentMessage ? <p className="mt-2 text-xs text-gray-600">{paymentMessage}</p> : null}
+          {upiIntent ? (
+            <a href={upiIntent} className="mt-3 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+              Pay via UPI App
+            </a>
+          ) : null}
         </div>
 
         {/* Danger Zone */}

@@ -5,6 +5,7 @@ import { generateSmartReplies, analyzeSentiment } from '@/lib/ai-content'
 import { InboxMessage, ApiResponse, SuggestedReply } from '@/lib/types'
 import { loadTokens } from '@/lib/token-store'
 import { getOnboardingProfile } from '@/lib/onboarding-store'
+import { getUserIdFromRequest } from '@/lib/user-session'
 
 interface InboxResponse {
   messages: InboxMessage[]
@@ -14,12 +15,13 @@ interface InboxResponse {
 
 export async function GET(request: NextRequest) {
   try {
+    const userId = getUserIdFromRequest(request)
     const searchParams = request.nextUrl.searchParams
     const filter = searchParams.get('filter') || 'all' // all, unread, replied, starred
     const platform = searchParams.get('platform')
     const limit = parseInt(searchParams.get('limit') || '20', 10)
 
-    const tokens = await loadTokens()
+    const tokens = await loadTokens(userId)
     const connectedPlatforms = [
       ...(tokens?.pages?.length ? ['facebook'] : []),
       ...(tokens?.instagramAccounts?.length ? ['instagram'] : []),
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const userId = getUserIdFromRequest(request)
     const body = await request.json()
     const { messageId, action, messageText } = body
 
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
 
       // Get smart reply suggestions
       const sentiment = await analyzeSentiment(messageText)
-      const profile = await getOnboardingProfile()
+      const profile = await getOnboardingProfile(userId)
       const replies = await generateSmartReplies(messageText, {
         platform: 'instagram',
         sentiment,

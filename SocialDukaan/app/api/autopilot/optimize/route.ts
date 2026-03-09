@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { ensureAutopilotState } from "@/lib/autopilot-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 function getHourLabel(iso: string): string {
   const date = new Date(iso);
   return date.toLocaleTimeString("en-US", { hour: "numeric", hour12: true });
 }
 
-export async function GET() {
-  const state = await ensureAutopilotState();
+export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
+  const state = await ensureAutopilotState(undefined, userId);
   const posted = state.jobs.filter((job) => job.status === "posted");
   const failed = state.jobs.filter((job) => job.status === "failed");
 

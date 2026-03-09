@@ -2,6 +2,7 @@ import fs from "fs";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
 import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 import type { Channel, Competitor } from "@/lib/types";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export type VerificationStatus = "unchecked" | "checking" | "verified" | "not_found" | "unknown";
 
@@ -17,7 +18,7 @@ interface CompetitorState {
   updatedAt: string;
 }
 
-const COMPETITOR_FILES = getPersistentFileCandidates(".competitors.json");
+const COMPETITOR_FILE = ".competitors.json";
 const COMPETITORS_KEY = "socialdukaan:competitors";
 
 const seedCompetitors: StoredCompetitor[] = [
@@ -54,58 +55,95 @@ const seedCompetitors: StoredCompetitor[] = [
     isSeed: true,
     verificationStatus: "unchecked",
   },
+  {
+    id: "c4",
+    handle: "@bharatcreator",
+    channel: "sharechat",
+    postsPerWeek: 10,
+    avgEngagement: 5.1,
+    topHashtags: ["#hindicontent", "#india", "#dailyupdate"],
+    lastActivity: "3 hours ago",
+    isSeed: true,
+    verificationStatus: "unchecked",
+  },
+  {
+    id: "c5",
+    handle: "@mojtrendsindia",
+    channel: "moj",
+    postsPerWeek: 14,
+    avgEngagement: 6.4,
+    topHashtags: ["#shortvideo", "#mojindia", "#trending"],
+    lastActivity: "1 hour ago",
+    isSeed: true,
+    verificationStatus: "unchecked",
+  },
+  {
+    id: "c6",
+    handle: "@joshviralhub",
+    channel: "josh",
+    postsPerWeek: 11,
+    avgEngagement: 4.9,
+    topHashtags: ["#joshapp", "#viralindia", "#creator"],
+    lastActivity: "6 hours ago",
+    isSeed: true,
+    verificationStatus: "unchecked",
+  },
 ];
 
-async function readFileState(): Promise<CompetitorState | null> {
+async function readFileState(userId = "anon"): Promise<CompetitorState | null> {
+  const files = getPersistentFileCandidates(userScopedRelativePath(COMPETITOR_FILE, userId));
   try {
-    return await readFirstExistingJson<CompetitorState>(COMPETITOR_FILES);
+    return await readFirstExistingJson<CompetitorState>(files);
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: CompetitorState): Promise<void> {
-  await writeJsonWithFallback(COMPETITOR_FILES, state);
+async function writeFileState(state: CompetitorState, userId = "anon"): Promise<void> {
+  const files = getPersistentFileCandidates(userScopedRelativePath(COMPETITOR_FILE, userId));
+  await writeJsonWithFallback(files, state);
 }
 
-export async function loadCompetitorState(): Promise<CompetitorState> {
+export async function loadCompetitorState(userId = "anon"): Promise<CompetitorState> {
+  const key = userScopedKey(COMPETITORS_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<CompetitorState>(COMPETITORS_KEY);
+    const fromRedis = await redisGetJson<CompetitorState>(key);
     if (fromRedis?.competitors?.length) return fromRedis;
     const seeded = { competitors: seedCompetitors, updatedAt: new Date().toISOString() };
-    await redisSetJson(COMPETITORS_KEY, seeded);
+    await redisSetJson(key, seeded);
     return seeded;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile?.competitors?.length) return fromFile;
 
   const seeded = { competitors: seedCompetitors, updatedAt: new Date().toISOString() };
-  await writeFileState(seeded);
+  await writeFileState(seeded, userId);
   return seeded;
 }
 
-export async function saveCompetitorState(state: CompetitorState): Promise<void> {
+export async function saveCompetitorState(state: CompetitorState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(COMPETITORS_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(COMPETITORS_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
-export async function listCompetitors(): Promise<StoredCompetitor[]> {
-  const state = await loadCompetitorState();
+export async function listCompetitors(userId = "anon"): Promise<StoredCompetitor[]> {
+  const state = await loadCompetitorState(userId);
   return state.competitors;
 }
 
 export async function addCompetitor(input: {
   handle: string;
   channel: Channel;
-}): Promise<StoredCompetitor> {
-  const state = await loadCompetitorState();
+}, userId = "anon"): Promise<StoredCompetitor> {
+  const state = await loadCompetitorState(userId);
 
   const competitor: StoredCompetitor = {
     id: `c${Date.now()}`,
@@ -113,25 +151,32 @@ export async function addCompetitor(input: {
     channel: input.channel,
     postsPerWeek: Math.floor(Math.random() * 8) + 2,
     avgEngagement: +(Math.random() * 4 + 1).toFixed(1),
-    topHashtags: ["#marketing", "#growth", "#socialmedia"],
+    topHashtags:
+      input.channel === "sharechat"
+        ? ["#hindicontent", "#sharechat", "#india"]
+        : input.channel === "moj"
+          ? ["#moj", "#shortvideo", "#trending"]
+          : input.channel === "josh"
+            ? ["#joshapp", "#viral", "#creator"]
+            : ["#marketing", "#growth", "#socialmedia"],
     lastActivity: "just now",
     isSeed: false,
     verificationStatus: "unchecked",
   };
 
   state.competitors.push(competitor);
-  await saveCompetitorState(state);
+  await saveCompetitorState(state, userId);
   return competitor;
 }
 
-export async function removeCompetitor(id: string): Promise<boolean> {
-  const state = await loadCompetitorState();
+export async function removeCompetitor(id: string, userId = "anon"): Promise<boolean> {
+  const state = await loadCompetitorState(userId);
   const prevLen = state.competitors.length;
   state.competitors = state.competitors.filter((item) => item.id !== id);
 
   if (state.competitors.length === prevLen) return false;
 
-  await saveCompetitorState(state);
+  await saveCompetitorState(state, userId);
   return true;
 }
 
@@ -139,8 +184,8 @@ export async function updateCompetitorVerification(input: {
   id: string;
   verificationStatus: VerificationStatus;
   verificationMessage?: string;
-}): Promise<StoredCompetitor | null> {
-  const state = await loadCompetitorState();
+}, userId = "anon"): Promise<StoredCompetitor | null> {
+  const state = await loadCompetitorState(userId);
   const target = state.competitors.find((item) => item.id === input.id);
   if (!target) return null;
 
@@ -148,6 +193,6 @@ export async function updateCompetitorVerification(input: {
   target.verificationMessage = input.verificationMessage;
   target.checkedAt = new Date().toISOString();
 
-  await saveCompetitorState(state);
+  await saveCompetitorState(state, userId);
   return target;
 }

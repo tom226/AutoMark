@@ -11,6 +11,7 @@ import {
   upsertWeeklyTasks,
   type WeeklyContentTask,
 } from "@/lib/task-folder-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface GeneratePayload {
   action?: "generate";
@@ -65,8 +66,8 @@ function normalizeChannels(
   return requested.filter((channel) => allowed.includes(channel));
 }
 
-async function autopostSingleTask(task: WeeklyContentTask) {
-  const tokens = await loadTokens();
+async function autopostSingleTask(task: WeeklyContentTask, userId: string) {
+  const tokens = await loadTokens(userId);
   if (!tokens) {
     return { success: false as const, error: "Connect social accounts first." };
   }
@@ -91,7 +92,7 @@ async function autopostSingleTask(task: WeeklyContentTask) {
     const failed = await updateWeeklyTask(task.id, {
       status: "upcoming",
       error: channelResult?.error ?? "Autopost failed",
-    });
+    }, userId);
 
     return {
       success: false as const,
@@ -104,7 +105,7 @@ async function autopostSingleTask(task: WeeklyContentTask) {
     status: "posted",
     postedAt: new Date().toISOString(),
     error: undefined,
-  });
+  }, userId);
 
   return {
     success: true as const,
@@ -114,10 +115,11 @@ async function autopostSingleTask(task: WeeklyContentTask) {
 }
 
 export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const tab = url.searchParams.get("tab");
 
-  const all = await listWeeklyTasks();
+  const all = await listWeeklyTasks(userId);
   const tasks =
     tab === "review" || tab === "upcoming" || tab === "posted" || tab === "rejected"
       ? all.filter((task) => task.status === tab)
@@ -127,16 +129,17 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const body = (await request.json()) as TaskPayload;
 
   if (body.action === "generate") {
-    const tokens = await loadTokens();
+    const tokens = await loadTokens(userId);
     if (!tokens) {
       return NextResponse.json({ error: "Connect social accounts first." }, { status: 401 });
     }
 
-    const autopilot = await ensureAutopilotState();
-    const competitors = await listCompetitors();
+    const autopilot = await ensureAutopilotState(undefined, userId);
+    const competitors = await listCompetitors(userId);
     const competitorPool = competitors.some((item) => !item.isSeed)
       ? competitors.filter((item) => !item.isSeed)
       : competitors;
@@ -197,7 +200,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await upsertWeeklyTasks(generated);
+    await upsertWeeklyTasks(generated, userId);
     return NextResponse.json({ created: generated.length, tasks: generated });
   }
 
@@ -209,7 +212,7 @@ export async function POST(request: Request) {
     const updated = await updateWeeklyTask(body.taskId, {
       status: "upcoming",
       error: undefined,
-    });
+    }, userId);
 
     if (!updated) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -223,13 +226,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "taskId is required" }, { status: 400 });
     }
 
-    const tasks = await listWeeklyTasks();
+    const tasks = await listWeeklyTasks(userId);
     const task = tasks.find((item) => item.id === body.taskId);
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    const postResult = await autopostSingleTask(task);
+    const postResult = await autopostSingleTask(task, userId);
     if (!postResult.success) {
       return NextResponse.json(
         {
@@ -251,7 +254,7 @@ export async function POST(request: Request) {
     const updated = await updateWeeklyTask(body.taskId, {
       status: "rejected",
       error: undefined,
-    });
+    }, userId);
 
     if (!updated) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -265,7 +268,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "taskId is required" }, { status: 400 });
     }
 
-    const removed = await deleteWeeklyTask(body.taskId);
+    const removed = await deleteWeeklyTask(body.taskId, userId);
     if (!removed) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
@@ -281,7 +284,7 @@ export async function POST(request: Request) {
 
     let deleted = 0;
     for (const id of ids) {
-      const removed = await deleteWeeklyTask(id);
+      const removed = await deleteWeeklyTask(id, userId);
       if (removed) deleted += 1;
     }
 
@@ -292,7 +295,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "approve_all") {
-    const all = await listWeeklyTasks();
+    const all = await listWeeklyTasks(userId);
     const reviewTasks = all.filter((task) => task.status === "review");
 
     const updated = await Promise.all(
@@ -300,7 +303,7 @@ export async function POST(request: Request) {
         updateWeeklyTask(task.id, {
           status: "upcoming",
           error: undefined,
-        })
+        }, userId)
       )
     );
 
@@ -310,7 +313,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "autopost_all") {
-    const all = await listWeeklyTasks();
+    const all = await listWeeklyTasks(userId);
     const candidates = all.filter((task) => task.status === "upcoming" || task.status === "review");
 
     let posted = 0;
@@ -319,10 +322,10 @@ export async function POST(request: Request) {
 
     for (const task of candidates) {
       if (task.status === "review") {
-        await updateWeeklyTask(task.id, { status: "upcoming", error: undefined });
+        await updateWeeklyTask(task.id, { status: "upcoming", error: undefined }, userId);
       }
 
-      const result = await autopostSingleTask({ ...task, status: "upcoming" });
+      const result = await autopostSingleTask({ ...task, status: "upcoming" }, userId);
       if (result.success) posted += 1;
       else {
         failed += 1;

@@ -8,6 +8,7 @@ import { researchTopicInsights } from "@/lib/topic-research";
 import { fetchResearchUsingWrapper } from "@/lib/research-wrapper";
 import { getResearchSnapshot, replaceResearchSnapshot } from "@/lib/research-store";
 import { getResearchPreferences } from "@/lib/research-preferences-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface AutopilotPayload {
   channels: ("instagram" | "facebook")[];
@@ -371,7 +372,8 @@ function nextDateAtHour(offsetDays: number, hour: number): string {
 }
 
 export async function POST(request: Request) {
-  const tokens = await loadTokens();
+  const userId = getUserIdFromRequest(request);
+  const tokens = await loadTokens(userId);
   if (!tokens) {
     return NextResponse.json(
       { error: "No social accounts connected. Connect your account first." },
@@ -381,7 +383,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as AutopilotPayload;
   const { channels = [], pageId, imageUrl, tone, competitorHint, campaignTopic } = body;
-  const preferences = await getResearchPreferences();
+  const preferences = await getResearchPreferences(userId);
 
   if (!pageId) {
     return NextResponse.json({ error: "pageId is required" }, { status: 400 });
@@ -430,7 +432,7 @@ export async function POST(request: Request) {
 
   const style = buildStyleSignature(recentMessages);
 
-  const competitors = await listCompetitors();
+  const competitors = await listCompetitors(userId);
   const userCompetitors = competitors.filter((item) => !item.isSeed);
   if (userCompetitors.length === 0) {
     return NextResponse.json(
@@ -452,7 +454,7 @@ export async function POST(request: Request) {
       .map((item) => item.handle.toLowerCase())
   );
 
-  let snapshot = await getResearchSnapshot();
+  let snapshot = await getResearchSnapshot(userId);
   if (snapshot.items.length === 0) {
     const fetched = await fetchResearchUsingWrapper({
       competitors: finalCompetitors.map((item) => ({
@@ -468,7 +470,7 @@ export async function POST(request: Request) {
       snapshot = await replaceResearchSnapshot({
         items: fetched.items,
         trendingHashtags: fetched.trendingHashtags,
-      });
+      }, userId);
     }
   }
 
@@ -572,7 +574,7 @@ export async function POST(request: Request) {
     });
   }
 
-  await upsertWeeklyTasks(tasks);
+  await upsertWeeklyTasks(tasks, userId);
 
   return NextResponse.json(
     {

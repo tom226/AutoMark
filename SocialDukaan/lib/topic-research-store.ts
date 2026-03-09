@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export interface TopicResearchInsight {
   id: string;
@@ -22,58 +23,66 @@ interface TopicResearchState {
   updatedAt: string;
 }
 
-const FILE_PATH = path.join(process.cwd(), "tasks", "topic-research.json");
+const FILE_PATH = "tasks/topic-research.json";
 const REDIS_KEY = "socialdukaan:topic-research";
+
+function getFilePath(userId = "anon"): string {
+  return path.join(process.cwd(), userScopedRelativePath(FILE_PATH, userId));
+}
 
 function toKey(topic: string, location?: string): string {
   return `${topic.toLowerCase().trim()}::${(location ?? "global").toLowerCase().trim()}`;
 }
 
-async function readFileState(): Promise<TopicResearchState | null> {
+async function readFileState(userId = "anon"): Promise<TopicResearchState | null> {
+  const filePath = getFilePath(userId);
   try {
-    if (!fs.existsSync(FILE_PATH)) return null;
-    const raw = await fs.promises.readFile(FILE_PATH, "utf-8");
+    if (!fs.existsSync(filePath)) return null;
+    const raw = await fs.promises.readFile(filePath, "utf-8");
     return JSON.parse(raw) as TopicResearchState;
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: TopicResearchState): Promise<void> {
-  await fs.promises.mkdir(path.dirname(FILE_PATH), { recursive: true });
-  await fs.promises.writeFile(FILE_PATH, JSON.stringify(state, null, 2), "utf-8");
+async function writeFileState(state: TopicResearchState, userId = "anon"): Promise<void> {
+  const filePath = getFilePath(userId);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, JSON.stringify(state, null, 2), "utf-8");
 }
 
-async function loadState(): Promise<TopicResearchState> {
+async function loadState(userId = "anon"): Promise<TopicResearchState> {
+  const key = userScopedKey(REDIS_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<TopicResearchState>(REDIS_KEY);
+    const fromRedis = await redisGetJson<TopicResearchState>(key);
     if (fromRedis) return fromRedis;
     const fresh: TopicResearchState = { records: [], updatedAt: new Date().toISOString() };
-    await redisSetJson(REDIS_KEY, fresh);
+    await redisSetJson(key, fresh);
     return fresh;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile) return fromFile;
 
   const fresh: TopicResearchState = { records: [], updatedAt: new Date().toISOString() };
-  await writeFileState(fresh);
+  await writeFileState(fresh, userId);
   return fresh;
 }
 
-async function saveState(state: TopicResearchState): Promise<void> {
+async function saveState(state: TopicResearchState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(REDIS_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(REDIS_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
-export async function getTopicResearch(topic: string, location?: string): Promise<TopicResearchRecord | null> {
-  const state = await loadState();
+export async function getTopicResearch(topic: string, location?: string, userId = "anon"): Promise<TopicResearchRecord | null> {
+  const state = await loadState(userId);
   const key = toKey(topic, location);
   return state.records.find((record) => record.key === key) ?? null;
 }
@@ -82,8 +91,8 @@ export async function saveTopicResearch(input: {
   topic: string;
   location?: string;
   insights: TopicResearchInsight[];
-}): Promise<TopicResearchRecord> {
-  const state = await loadState();
+}, userId = "anon"): Promise<TopicResearchRecord> {
+  const state = await loadState(userId);
   const key = toKey(input.topic, input.location);
 
   const record: TopicResearchRecord = {
@@ -98,6 +107,6 @@ export async function saveTopicResearch(input: {
   if (idx >= 0) state.records[idx] = record;
   else state.records.push(record);
 
-  await saveState(state);
+  await saveState(state, userId);
   return record;
 }

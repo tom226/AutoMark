@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export type TaskStatus = "review" | "upcoming" | "posted" | "rejected";
 
@@ -32,61 +33,68 @@ interface TaskFolderState {
   updatedAt: string;
 }
 
-const TASK_DIR = path.join(process.cwd(), "tasks");
-const TASK_FILE = path.join(TASK_DIR, "weekly-content.json");
+const TASK_FILE = "tasks/weekly-content.json";
 const TASK_KEY = "socialdukaan:weekly-tasks";
 
-async function readFileState(): Promise<TaskFolderState | null> {
+function getTaskFilePath(userId = "anon"): string {
+  return path.join(process.cwd(), userScopedRelativePath(TASK_FILE, userId));
+}
+
+async function readFileState(userId = "anon"): Promise<TaskFolderState | null> {
+  const filePath = getTaskFilePath(userId);
   try {
-    if (!fs.existsSync(TASK_FILE)) return null;
-    const raw = await fs.promises.readFile(TASK_FILE, "utf-8");
+    if (!fs.existsSync(filePath)) return null;
+    const raw = await fs.promises.readFile(filePath, "utf-8");
     return JSON.parse(raw) as TaskFolderState;
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: TaskFolderState): Promise<void> {
-  await fs.promises.mkdir(TASK_DIR, { recursive: true });
-  await fs.promises.writeFile(TASK_FILE, JSON.stringify(state, null, 2), "utf-8");
+async function writeFileState(state: TaskFolderState, userId = "anon"): Promise<void> {
+  const filePath = getTaskFilePath(userId);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, JSON.stringify(state, null, 2), "utf-8");
 }
 
-export async function loadTaskFolderState(): Promise<TaskFolderState> {
+export async function loadTaskFolderState(userId = "anon"): Promise<TaskFolderState> {
+  const key = userScopedKey(TASK_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<TaskFolderState>(TASK_KEY);
+    const fromRedis = await redisGetJson<TaskFolderState>(key);
     if (fromRedis) return fromRedis;
 
     const fresh = { tasks: [], updatedAt: new Date().toISOString() };
-    await redisSetJson(TASK_KEY, fresh);
+    await redisSetJson(key, fresh);
     return fresh;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile) return fromFile;
 
   const fresh = { tasks: [], updatedAt: new Date().toISOString() };
-  await writeFileState(fresh);
+  await writeFileState(fresh, userId);
   return fresh;
 }
 
-export async function saveTaskFolderState(state: TaskFolderState): Promise<void> {
+export async function saveTaskFolderState(state: TaskFolderState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(TASK_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(TASK_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
-export async function listWeeklyTasks(): Promise<WeeklyContentTask[]> {
-  const state = await loadTaskFolderState();
+export async function listWeeklyTasks(userId = "anon"): Promise<WeeklyContentTask[]> {
+  const state = await loadTaskFolderState(userId);
   return [...state.tasks].sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
 }
 
-export async function upsertWeeklyTasks(tasks: WeeklyContentTask[]): Promise<void> {
-  const state = await loadTaskFolderState();
+export async function upsertWeeklyTasks(tasks: WeeklyContentTask[], userId = "anon"): Promise<void> {
+  const state = await loadTaskFolderState(userId);
   const map = new Map(state.tasks.map((task) => [task.id, task]));
 
   for (const task of tasks) {
@@ -94,28 +102,29 @@ export async function upsertWeeklyTasks(tasks: WeeklyContentTask[]): Promise<voi
   }
 
   state.tasks = Array.from(map.values());
-  await saveTaskFolderState(state);
+  await saveTaskFolderState(state, userId);
 }
 
 export async function updateWeeklyTask(
   id: string,
-  patch: Partial<WeeklyContentTask>
+  patch: Partial<WeeklyContentTask>,
+  userId = "anon",
 ): Promise<WeeklyContentTask | null> {
-  const state = await loadTaskFolderState();
+  const state = await loadTaskFolderState(userId);
   const target = state.tasks.find((task) => task.id === id);
   if (!target) return null;
 
   Object.assign(target, patch);
-  await saveTaskFolderState(state);
+  await saveTaskFolderState(state, userId);
   return target;
 }
 
-export async function deleteWeeklyTask(id: string): Promise<boolean> {
-  const state = await loadTaskFolderState();
+export async function deleteWeeklyTask(id: string, userId = "anon"): Promise<boolean> {
+  const state = await loadTaskFolderState(userId);
   const before = state.tasks.length;
   state.tasks = state.tasks.filter((task) => task.id !== id);
   if (state.tasks.length === before) return false;
 
-  await saveTaskFolderState(state);
+  await saveTaskFolderState(state, userId);
   return true;
 }

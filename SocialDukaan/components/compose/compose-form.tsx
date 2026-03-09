@@ -20,9 +20,11 @@ import {
   FlaskConical,
   Trophy,
   Gauge,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { CompetitorFeedItem, Experiment } from "@/lib/types";
+import { useSearchParams } from "next/navigation";
 
 interface AccountsData {
   connected: boolean;
@@ -73,7 +75,14 @@ interface OnboardingData {
     niche?: string;
     primaryObjective?: string;
     businessType?: string;
+    preferredLanguage?: string;
   };
+}
+
+interface FestivalEvent {
+  id: string;
+  name: string;
+  date: string;
 }
 
 const channels = [
@@ -100,6 +109,12 @@ const channels = [
     label: "Twitter",
     icon: Twitter,
     color: "bg-gray-900 text-white",
+  },
+  {
+    key: "whatsapp",
+    label: "WhatsApp",
+    icon: MessageCircle,
+    color: "bg-emerald-600 text-white",
   },
 ] as const;
 
@@ -138,6 +153,10 @@ export default function ComposeForm() {
   const [fixError, setFixError] = useState("");
   const [fixData, setFixData] = useState<ContentFixResponse | null>(null);
   const [generateError, setGenerateError] = useState("");
+  const [language, setLanguage] = useState("hinglish");
+  const [festivalEvents, setFestivalEvents] = useState<FestivalEvent[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const searchParams = useSearchParams();
 
   const toggle = (key: ChannelKey) => {
     setSelected((prev) => {
@@ -163,6 +182,20 @@ export default function ComposeForm() {
       })
       .finally(() => setAccountsLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/festivals?mode=upcoming&days=120", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setFestivalEvents(Array.isArray(data.events) ? (data.events as FestivalEvent[]) : []);
+      })
+      .catch(() => setFestivalEvents([]));
+  }, []);
+
+  useEffect(() => {
+    const eventId = searchParams.get("eventId");
+    if (eventId) setSelectedEventId(eventId);
+  }, [searchParams]);
 
   const loadFeed = async (reset = false) => {
     if (feedLoading) return;
@@ -247,6 +280,10 @@ export default function ComposeForm() {
       return [{ value: "primary", label: name }];
     }
 
+    if (activeChannel === "whatsapp") {
+      return [{ value: "business", label: "WhatsApp Business" }];
+    }
+
     return [];
   }, [accounts, activeChannel]);
 
@@ -285,6 +322,8 @@ export default function ComposeForm() {
       const niche = onboardingData.profile?.niche?.trim();
       const objective = onboardingData.profile?.primaryObjective?.trim();
       const businessType = onboardingData.profile?.businessType?.trim();
+      const preferredLanguage = onboardingData.profile?.preferredLanguage?.trim().toLowerCase();
+      if (preferredLanguage) setLanguage(preferredLanguage);
 
       if (!niche) {
         setGenerateError("Please set your niche in onboarding so AI can generate relevant content.");
@@ -305,6 +344,9 @@ export default function ComposeForm() {
         body: JSON.stringify({
           topic,
           channel: selected[0],
+          language,
+          eventId: selectedEventId || undefined,
+          niche,
           inspirations,
         }),
       });
@@ -327,7 +369,7 @@ export default function ComposeForm() {
     setPostResults(null);
     try {
       const supportedChannels = selected.filter(
-        (c) => c === "instagram" || c === "facebook" || c === "twitter"
+        (c) => c === "instagram" || c === "facebook" || c === "twitter" || c === "whatsapp"
       );
       if (supportedChannels.length === 0) {
         setPostResults({
@@ -339,7 +381,8 @@ export default function ComposeForm() {
         return;
       }
 
-      const needsMetaPage = supportedChannels.some((c) => c === "instagram" || c === "facebook");
+      const socialChannels = supportedChannels.filter((c) => c !== "whatsapp");
+      const needsMetaPage = socialChannels.some((c) => c === "instagram" || c === "facebook");
       const effectiveMetaPageId = supportedChannels.includes("instagram")
         ? selectedInstagramPageId
         : selectedFacebookPageId;
@@ -386,22 +429,48 @@ export default function ComposeForm() {
         return;
       }
 
-      const res = await fetch("/api/social/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channels: supportedChannels,
-          caption,
-          imageUrl: imageUrl.trim() || undefined,
-          pageId: needsMetaPage ? effectiveMetaPageId : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setPostResults({ auth: { success: false, error: data.error } });
-      } else {
-        setPostResults(data.results);
+      const results: Record<string, { success: boolean; id?: string; error?: string }> = {};
+
+      if (socialChannels.length > 0) {
+        const res = await fetch("/api/social/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channels: socialChannels,
+            caption,
+            imageUrl: imageUrl.trim() || undefined,
+            pageId: needsMetaPage ? effectiveMetaPageId : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          results.auth = { success: false, error: data.error };
+        } else {
+          Object.assign(results, data.results);
+        }
       }
+
+      if (supportedChannels.includes("whatsapp")) {
+        const scheduledAt = date && time ? new Date(`${date}T${time}`).toISOString() : new Date().toISOString();
+        const waRes = await fetch("/api/whatsapp/broadcasts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "schedule",
+            title: "Compose Broadcast",
+            message: caption,
+            mediaUrl: imageUrl.trim() || undefined,
+            scheduledAt,
+            audience: ["all_customers"],
+          }),
+        });
+        const waData = await waRes.json();
+        results.whatsapp = waRes.ok
+          ? { success: true, id: waData.broadcast?.id }
+          : { success: false, error: waData.error || "WhatsApp scheduling failed" };
+      }
+
+      setPostResults(results);
     } catch {
       setPostResults({ network: { success: false, error: "Network error. Check your connection." } });
     } finally {
@@ -679,6 +748,11 @@ export default function ComposeForm() {
               LinkedIn is selected but not connected yet. Connect it from onboarding to publish.
             </p>
           )}
+          {activeChannel === "whatsapp" && (
+            <p className="text-xs text-emerald-700">
+              WhatsApp Business broadcasts will be scheduled from this composer.
+            </p>
+          )}
         </div>
       </div>
 
@@ -703,6 +777,35 @@ export default function ComposeForm() {
         </div>
 
         {generateError ? <p className="mb-2 text-xs text-amber-700">{generateError}</p> : null}
+
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="input rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+          >
+            <option value="english">English</option>
+            <option value="hindi">Hindi</option>
+            <option value="hinglish">Hinglish</option>
+            <option value="marathi">Marathi</option>
+            <option value="tamil">Tamil</option>
+            <option value="bengali">Bengali</option>
+            <option value="gujarati">Gujarati</option>
+          </select>
+
+          <select
+            value={selectedEventId}
+            onChange={(e) => setSelectedEventId(e.target.value)}
+            className="input rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+          >
+            <option value="">No festival context</option>
+            {festivalEvents.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name} ({new Date(event.date).toLocaleDateString()})
+              </option>
+            ))}
+          </select>
+        </div>
 
         <textarea
           value={caption}

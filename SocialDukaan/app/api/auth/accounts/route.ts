@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadTokens, clearTokens } from "@/lib/token-store";
 import { saveTokens } from "@/lib/token-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 const LINKEDIN_COOKIE = "sd_linkedin_conn";
 const TWITTER_COOKIE = "sd_twitter_conn";
@@ -20,13 +21,14 @@ function parseCookieJson<T>(value?: string): T | null {
  * Does NOT expose access tokens to the client.
  */
 export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const oauth = {
     metaConfigured: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
     linkedinConfigured: Boolean(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
     twitterConfigured: Boolean(process.env.TWITTER_CLIENT_ID),
   };
 
-  let tokens = await loadTokens();
+  let tokens = await loadTokens(userId);
 
   const linkedinFromCookie = parseCookieJson<{
     accessToken: string;
@@ -53,7 +55,7 @@ export async function GET(request: Request) {
       linkedin: linkedinFromCookie ?? undefined,
       twitter: twitterFromCookie ?? undefined,
     };
-    await saveTokens(tokens);
+    await saveTokens(tokens, userId);
   } else if (tokens) {
     let changed = false;
     if (!tokens.linkedin?.accessToken && linkedinFromCookie?.accessToken) {
@@ -65,7 +67,7 @@ export async function GET(request: Request) {
       changed = true;
     }
     if (changed) {
-      await saveTokens(tokens);
+      await saveTokens(tokens, userId);
     }
   }
 
@@ -109,18 +111,19 @@ export async function GET(request: Request) {
  * Supported values: all | meta | facebook | instagram | linkedin | twitter
  */
 export async function DELETE(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const provider = (url.searchParams.get("provider") ?? "all").toLowerCase();
 
   if (provider === "all") {
-    await clearTokens();
+    await clearTokens(userId);
     const response = NextResponse.json({ disconnected: true, provider: "all" });
     response.cookies.delete(LINKEDIN_COOKIE);
     response.cookies.delete(TWITTER_COOKIE);
     return response;
   }
 
-  const tokens = await loadTokens();
+  const tokens = await loadTokens(userId);
   if (!tokens) {
     const response = NextResponse.json({ disconnected: true, provider, noop: true });
     if (provider === "linkedin") response.cookies.delete(LINKEDIN_COOKIE);
@@ -153,14 +156,14 @@ export async function DELETE(request: Request) {
     Boolean(tokens.twitter?.accessToken);
 
   if (!hasAnyConnected) {
-    await clearTokens();
+    await clearTokens(userId);
     const response = NextResponse.json({ disconnected: true, provider });
     if (provider === "linkedin") response.cookies.delete(LINKEDIN_COOKIE);
     if (provider === "twitter") response.cookies.delete(TWITTER_COOKIE);
     return response;
   }
 
-  await saveTokens(tokens);
+  await saveTokens(tokens, userId);
   const response = NextResponse.json({ disconnected: true, provider });
   if (provider === "linkedin") response.cookies.delete(LINKEDIN_COOKIE);
   if (provider === "twitter") response.cookies.delete(TWITTER_COOKIE);

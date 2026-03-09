@@ -5,6 +5,7 @@ import {
   redisSetJson,
 } from "./redis-rest";
 import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "./persistent-file";
+import { userScopedKey, userScopedRelativePath } from "./user-session";
 
 export type AutopilotChannel = "instagram" | "facebook";
 
@@ -44,34 +45,38 @@ export interface AutopilotState {
   updatedAt: string;
 }
 
-const AUTOPILOT_FILES = getPersistentFileCandidates(".autopilot.json");
+const AUTOPILOT_FILE = ".autopilot.json";
 const AUTOPILOT_KEY = "socialdukaan:autopilot";
 
-export async function loadAutopilotState(): Promise<AutopilotState | null> {
+export async function loadAutopilotState(userId = "anon"): Promise<AutopilotState | null> {
+  const key = userScopedKey(AUTOPILOT_KEY, userId);
+  const files = getPersistentFileCandidates(userScopedRelativePath(AUTOPILOT_FILE, userId));
   if (isRedisRestConfigured()) {
-    return redisGetJson<AutopilotState>(AUTOPILOT_KEY);
+    return redisGetJson<AutopilotState>(key);
   }
 
   try {
-    return await readFirstExistingJson<AutopilotState>(AUTOPILOT_FILES);
+    return await readFirstExistingJson<AutopilotState>(files);
   } catch {
     return null;
   }
 }
 
-export async function saveAutopilotState(state: AutopilotState): Promise<void> {
+export async function saveAutopilotState(state: AutopilotState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(AUTOPILOT_KEY, userId);
+  const files = getPersistentFileCandidates(userScopedRelativePath(AUTOPILOT_FILE, userId));
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(AUTOPILOT_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeJsonWithFallback(AUTOPILOT_FILES, next);
+  await writeJsonWithFallback(files, next);
 }
 
-export async function ensureAutopilotState(partial?: Partial<AutopilotState>): Promise<AutopilotState> {
-  const existing = await loadAutopilotState();
+export async function ensureAutopilotState(partial?: Partial<AutopilotState>, userId = "anon"): Promise<AutopilotState> {
+  const existing = await loadAutopilotState(userId);
   if (existing) return existing;
 
   const fresh: AutopilotState = {
@@ -85,7 +90,7 @@ export async function ensureAutopilotState(partial?: Partial<AutopilotState>): P
     lastAutoGenerateAt: partial?.lastAutoGenerateAt,
     updatedAt: new Date().toISOString(),
   };
-  await saveAutopilotState(fresh);
+  await saveAutopilotState(fresh, userId);
   return fresh;
 }
 

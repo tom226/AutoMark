@@ -24,6 +24,14 @@ interface WeeklyContentTask {
   status: TaskStatus;
 }
 
+interface FestivalEvent {
+  id: string;
+  name: string;
+  date: string;
+  templateCaption: string;
+  tags: string[];
+}
+
 const CHANNEL_COLORS: Record<Channel, string> = {
   instagram: "bg-pink-500",
   facebook: "bg-blue-500",
@@ -48,6 +56,7 @@ export default function ContentCalendar() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
   const [tasks, setTasks] = useState<WeeklyContentTask[]>([]);
+  const [events, setEvents] = useState<FestivalEvent[]>([]);
 
   useEffect(() => {
     fetch("/api/tasks", { cache: "no-store" })
@@ -58,6 +67,15 @@ export default function ContentCalendar() {
       .catch(() => {
         setTasks([]);
       });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/festivals?mode=upcoming&days=120", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        setEvents(Array.isArray(data.events) ? (data.events as FestivalEvent[]) : []);
+      })
+      .catch(() => setEvents([]));
   }, []);
 
   const firstDay = new Date(currentYear, currentMonth, 1);
@@ -90,6 +108,13 @@ export default function ContentCalendar() {
     const dayTasks = getTasksForDay(day);
     const channels = [...new Set(dayTasks.map((task) => task.channel))];
     return channels.slice(0, 3);
+  };
+
+  const getEventsForDay = (day: number) => {
+    return events.filter((event) => {
+      const d = new Date(event.date);
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth && d.getDate() === day;
+    });
   };
 
   const selectedPosts = useMemo(() => {
@@ -183,6 +208,7 @@ export default function ContentCalendar() {
         <div className="grid grid-cols-7 gap-1">
           {cells.map((cell, idx) => {
             const dots = cell.inMonth ? getDotsForDay(cell.day) : [];
+            const dayEvents = cell.inMonth ? getEventsForDay(cell.day) : [];
             const selected = cell.inMonth && cell.day === selectedDay;
             const todayCell = cell.inMonth && isToday(cell.day);
 
@@ -217,10 +243,40 @@ export default function ContentCalendar() {
                     ))}
                   </div>
                 )}
+                {dayEvents.length > 0 && (
+                  <span className="mt-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                    Festive
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <h3 className="mb-3 text-sm font-semibold text-amber-900">Upcoming India Festivals & Events</h3>
+        {events.length === 0 ? (
+          <p className="text-sm text-amber-700">No upcoming events available right now.</p>
+        ) : (
+          <div className="space-y-2">
+            {events.slice(0, 6).map((event) => (
+              <div key={event.id} className="rounded-lg border border-amber-100 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-900">{event.name}</p>
+                  <span className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-600">{event.templateCaption}</p>
+                <a
+                  href={`/dashboard/compose?eventId=${encodeURIComponent(event.id)}`}
+                  className="mt-2 inline-flex rounded-md bg-sun-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sun-600"
+                >
+                  Use in Compose
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Selected day posts */}

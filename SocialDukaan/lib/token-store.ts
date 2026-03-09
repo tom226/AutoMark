@@ -13,9 +13,9 @@ import {
   redisGetJson,
   redisSetJson,
 } from "./redis-rest";
+import { userScopedKey, userScopedRelativePath } from "./user-session";
 
-const LOCAL_TOKEN_FILE = path.join(process.cwd(), ".tokens.json");
-const TMP_TOKEN_FILE = path.join(os.tmpdir(), "socialdukaan", ".tokens.json");
+const TOKEN_FILE = ".tokens.json";
 
 function isLikelyReadOnlyRuntime(): boolean {
   return (
@@ -28,10 +28,14 @@ function isLikelyReadOnlyRuntime(): boolean {
 
 const TOKEN_KEY = "socialdukaan:tokens";
 
-function getTokenFileCandidates(): string[] {
+function getTokenFileCandidates(userId = "anon"): string[] {
+  const scopedFile = userScopedRelativePath(TOKEN_FILE, userId);
+  const localFile = path.join(process.cwd(), scopedFile);
+  const tempFile = path.join(os.tmpdir(), "socialdukaan", scopedFile);
+
   return isLikelyReadOnlyRuntime()
-    ? [TMP_TOKEN_FILE, LOCAL_TOKEN_FILE]
-    : [LOCAL_TOKEN_FILE, TMP_TOKEN_FILE];
+    ? [tempFile, localFile]
+    : [localFile, tempFile];
 }
 
 function isReadOnlyFsError(error: unknown): boolean {
@@ -40,14 +44,15 @@ function isReadOnlyFsError(error: unknown): boolean {
   return code === "EROFS" || code === "EACCES" || code === "EPERM";
 }
 
-export async function saveTokens(tokens: StoredTokens): Promise<void> {
+export async function saveTokens(tokens: StoredTokens, userId = "anon"): Promise<void> {
+  const key = userScopedKey(TOKEN_KEY, userId);
   if (isRedisRestConfigured()) {
-    await redisSetJson(TOKEN_KEY, tokens);
+    await redisSetJson(key, tokens);
     return;
   }
 
   const payload = JSON.stringify(tokens, null, 2);
-  const candidates = getTokenFileCandidates();
+  const candidates = getTokenFileCandidates(userId);
 
   let lastError: unknown;
   for (const file of candidates) {
@@ -64,12 +69,13 @@ export async function saveTokens(tokens: StoredTokens): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error("Failed to persist tokens");
 }
 
-export async function loadTokens(): Promise<StoredTokens | null> {
+export async function loadTokens(userId = "anon"): Promise<StoredTokens | null> {
+  const key = userScopedKey(TOKEN_KEY, userId);
   if (isRedisRestConfigured()) {
-    return redisGetJson<StoredTokens>(TOKEN_KEY);
+    return redisGetJson<StoredTokens>(key);
   }
 
-  for (const file of getTokenFileCandidates()) {
+  for (const file of getTokenFileCandidates(userId)) {
     try {
       if (!fs.existsSync(file)) continue;
       const raw = await fs.promises.readFile(file, "utf-8");
@@ -82,13 +88,14 @@ export async function loadTokens(): Promise<StoredTokens | null> {
   return null;
 }
 
-export async function clearTokens(): Promise<void> {
+export async function clearTokens(userId = "anon"): Promise<void> {
+  const key = userScopedKey(TOKEN_KEY, userId);
   if (isRedisRestConfigured()) {
-    await redisDel(TOKEN_KEY);
+    await redisDel(key);
     return;
   }
 
-  for (const file of getTokenFileCandidates()) {
+  for (const file of getTokenFileCandidates(userId)) {
     try {
       if (fs.existsSync(file)) {
         await fs.promises.unlink(file);

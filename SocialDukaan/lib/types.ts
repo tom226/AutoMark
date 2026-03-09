@@ -34,7 +34,14 @@ export type SocialPlatform =
   | 'whatsapp'
 
 // Canonical publishing/research channels used across API and UI modules.
-export type Channel = 'instagram' | 'facebook' | 'linkedin' | 'twitter'
+export type Channel =
+  | 'instagram'
+  | 'facebook'
+  | 'linkedin'
+  | 'twitter'
+  | 'sharechat'
+  | 'moj'
+  | 'josh'
 
 export interface Competitor {
   id: string

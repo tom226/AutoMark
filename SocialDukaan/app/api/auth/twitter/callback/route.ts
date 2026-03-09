@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeTwitterCodeForToken, getTwitterProfile } from "@/lib/twitter";
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 const TWITTER_COOKIE = "sd_twitter_conn";
 
 export async function GET(request: NextRequest) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     const profile = await getTwitterProfile(token.accessToken);
 
     const existing =
-      (await loadTokens()) ?? {
+      (await loadTokens(userId)) ?? {
         userToken: "",
         pages: [],
         instagramAccounts: [],
@@ -57,7 +59,7 @@ export async function GET(request: NextRequest) {
       connectedAt: new Date().toISOString(),
     };
 
-    await saveTokens(existing);
+    await saveTokens(existing, userId);
 
     const response = NextResponse.redirect(`${origin}/dashboard/onboarding?connected=twitter`);
     response.cookies.delete("twitter_oauth_state");

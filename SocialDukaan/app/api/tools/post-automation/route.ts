@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { generateAutomatedPostPlan, type PostAutomationRequest } from "@/lib/post-automation-tool";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PostAutomationRequest;
-    const result = await generateAutomatedPostPlan(body ?? {});
+    const userId = getUserIdFromRequest(request);
+    const result = await generateAutomatedPostPlan({ ...(body ?? {}), userId });
 
     return NextResponse.json({
       status: "ok",

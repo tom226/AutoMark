@@ -8,6 +8,7 @@ import {
 import { loadTokens } from "@/lib/token-store";
 import { saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 /**
  * GET /api/auth/meta/callback
@@ -15,6 +16,7 @@ import { getAppOrigin } from "@/lib/app-origin";
  * and redirects the user back to the onboarding page.
  */
 export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
@@ -46,7 +48,7 @@ export async function GET(request: Request) {
         pageName: p.name,
       }));
 
-    const existing = await loadTokens();
+    const existing = await loadTokens(userId);
 
     const stored: StoredTokens = {
       userToken: longToken,
@@ -58,7 +60,7 @@ export async function GET(request: Request) {
     };
 
     // Save tokens to file (dev) or database (production)
-    await saveTokens(stored);
+    await saveTokens(stored, userId);
 
     return NextResponse.redirect(`${origin}/dashboard/onboarding?connected=1`);
   } catch (err: unknown) {

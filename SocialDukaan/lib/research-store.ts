@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export interface ResearchItem {
   id: string;
@@ -25,67 +26,75 @@ interface ResearchState {
   updatedAt: string;
 }
 
-const RESEARCH_FILE = path.join(process.cwd(), "tasks", "research-cache.json");
+const RESEARCH_FILE = "tasks/research-cache.json";
 const RESEARCH_KEY = "socialdukaan:research-cache";
 
-async function readFileState(): Promise<ResearchState | null> {
+function getResearchFilePath(userId = "anon"): string {
+  return path.join(process.cwd(), userScopedRelativePath(RESEARCH_FILE, userId));
+}
+
+async function readFileState(userId = "anon"): Promise<ResearchState | null> {
+  const filePath = getResearchFilePath(userId);
   try {
-    if (!fs.existsSync(RESEARCH_FILE)) return null;
-    const raw = await fs.promises.readFile(RESEARCH_FILE, "utf-8");
+    if (!fs.existsSync(filePath)) return null;
+    const raw = await fs.promises.readFile(filePath, "utf-8");
     return JSON.parse(raw) as ResearchState;
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: ResearchState): Promise<void> {
-  await fs.promises.mkdir(path.dirname(RESEARCH_FILE), { recursive: true });
-  await fs.promises.writeFile(RESEARCH_FILE, JSON.stringify(state, null, 2), "utf-8");
+async function writeFileState(state: ResearchState, userId = "anon"): Promise<void> {
+  const filePath = getResearchFilePath(userId);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, JSON.stringify(state, null, 2), "utf-8");
 }
 
-export async function loadResearchState(): Promise<ResearchState> {
+export async function loadResearchState(userId = "anon"): Promise<ResearchState> {
+  const key = userScopedKey(RESEARCH_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<ResearchState>(RESEARCH_KEY);
+    const fromRedis = await redisGetJson<ResearchState>(key);
     if (fromRedis) return fromRedis;
 
     const empty = { items: [], trendingHashtags: [], updatedAt: new Date().toISOString() };
-    await redisSetJson(RESEARCH_KEY, empty);
+    await redisSetJson(key, empty);
     return empty;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile) return fromFile;
 
   const empty = { items: [], trendingHashtags: [], updatedAt: new Date().toISOString() };
-  await writeFileState(empty);
+  await writeFileState(empty, userId);
   return empty;
 }
 
-export async function saveResearchState(state: ResearchState): Promise<void> {
+export async function saveResearchState(state: ResearchState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(RESEARCH_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(RESEARCH_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
-export async function getResearchSnapshot(): Promise<ResearchState> {
-  return loadResearchState();
+export async function getResearchSnapshot(userId = "anon"): Promise<ResearchState> {
+  return loadResearchState(userId);
 }
 
 export async function replaceResearchSnapshot(input: {
   items: ResearchItem[];
   trendingHashtags: TrendingHashtag[];
-}): Promise<ResearchState> {
+}, userId = "anon"): Promise<ResearchState> {
   const next: ResearchState = {
     items: input.items,
     trendingHashtags: input.trendingHashtags,
     updatedAt: new Date().toISOString(),
   };
 
-  await saveResearchState(next);
+  await saveResearchState(next, userId);
   return next;
 }

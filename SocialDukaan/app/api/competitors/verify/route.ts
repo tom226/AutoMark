@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Channel } from "@/lib/types";
 import { updateCompetitorVerification } from "@/lib/competitor-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface VerifyPayload {
   handle?: string;
@@ -22,6 +23,12 @@ function getProfileUrl(channel: Channel, normalizedHandle: string): string {
       return `https://www.linkedin.com/in/${normalizedHandle}`;
     case "twitter":
       return `https://x.com/${normalizedHandle}`;
+    case "sharechat":
+      return `https://sharechat.com/profile/${normalizedHandle}`;
+    case "moj":
+      return `https://mojapp.in/@${normalizedHandle}`;
+    case "josh":
+      return `https://share.myjosh.in/profile/${normalizedHandle}`;
     default:
       return `https://x.com/${normalizedHandle}`;
   }
@@ -47,6 +54,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response
 }
 
 export async function POST(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const body = (await request.json()) as VerifyPayload;
   const channel = body.channel;
   const rawHandle = body.handle;
@@ -72,7 +80,7 @@ export async function POST(request: Request) {
           id: competitorId,
           verificationStatus: "verified",
           verificationMessage: "Profile appears reachable.",
-        });
+        }, userId);
       }
       return NextResponse.json({
         status: "verified",
@@ -88,7 +96,7 @@ export async function POST(request: Request) {
           id: competitorId,
           verificationStatus: "not_found",
           verificationMessage: "Profile not found on selected platform.",
-        });
+        }, userId);
       }
       return NextResponse.json({
         status: "not_found",
@@ -103,7 +111,7 @@ export async function POST(request: Request) {
         id: competitorId,
         verificationStatus: "unknown",
         verificationMessage: "Platform restricted validation. Manual check recommended.",
-      });
+      }, userId);
     }
     return NextResponse.json({
       status: "unknown",
@@ -117,7 +125,7 @@ export async function POST(request: Request) {
         id: competitorId,
         verificationStatus: "unknown",
         verificationMessage: "Could not verify right now (network/protection). Manual check recommended.",
-      });
+      }, userId);
     }
     return NextResponse.json({
       status: "unknown",

@@ -6,6 +6,7 @@ import {
   updateExperimentMetrics,
 } from "@/lib/experiment-store";
 import type { Channel, ExperimentVariantKey } from "@/lib/types";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface CreateExperimentPayload {
   action: "create";
@@ -35,15 +36,17 @@ type ExperimentPayload =
   | EvaluateExperimentPayload;
 
 export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const statusParam = url.searchParams.get("status");
   const status = statusParam === "running" || statusParam === "completed" ? statusParam : undefined;
 
-  const experiments = await listExperiments(status);
+  const experiments = await listExperiments(status, userId);
   return NextResponse.json({ experiments });
 }
 
 export async function POST(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const body = (await request.json()) as ExperimentPayload;
 
   if (!body?.action) {
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
       topic: body.topic,
       baseCaption: body.baseCaption,
       variantB: body.variantB,
-    });
+    }, userId);
 
     return NextResponse.json({ experiment });
   }
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
       variant: body.variant,
       impressions: body.impressions,
       engagements: body.engagements,
-    });
+    }, userId);
 
     if (!updated) {
       return NextResponse.json({ error: "Experiment not found" }, { status: 404 });
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "evaluate") {
-    const evaluated = await evaluateExperiment(body.experimentId);
+    const evaluated = await evaluateExperiment(body.experimentId, userId);
     if (!evaluated) {
       return NextResponse.json({ error: "Experiment not found" }, { status: 404 });
     }

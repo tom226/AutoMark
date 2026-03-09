@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeLinkedInCodeForToken, getLinkedInProfile } from "@/lib/linkedin";
 import { loadTokens, saveTokens } from "@/lib/token-store";
 import { getAppOrigin } from "@/lib/app-origin";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 const LINKEDIN_COOKIE = "sd_linkedin_conn";
 
 export async function GET(request: NextRequest) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -29,7 +31,7 @@ export async function GET(request: NextRequest) {
     const profile = await getLinkedInProfile(token.accessToken);
 
     const existing =
-      (await loadTokens()) ?? {
+      (await loadTokens(userId)) ?? {
         userToken: "",
         pages: [],
         instagramAccounts: [],
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
       connectedAt: new Date().toISOString(),
     };
 
-    await saveTokens(existing);
+    await saveTokens(existing, userId);
 
     const response = NextResponse.redirect(`${origin}/dashboard/onboarding?connected=linkedin`);
     response.cookies.delete("linkedin_oauth_state");

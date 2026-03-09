@@ -14,6 +14,7 @@ import {
 import { AutoMarkScore, ApiResponse } from '@/lib/types'
 import { getOnboardingProfile } from '@/lib/onboarding-store'
 import { listWeeklyTasks } from '@/lib/task-folder-store'
+import { getUserIdFromRequest } from '@/lib/user-session'
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,8 +75,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const profile = await getOnboardingProfile()
-    const tasks = await listWeeklyTasks()
+    const userId = getUserIdFromRequest(request)
+    const profile = await getOnboardingProfile(userId)
+    const tasks = await listWeeklyTasks(userId)
 
     const now = Date.now()
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000

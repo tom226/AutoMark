@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { addCompetitor, listCompetitors, removeCompetitor } from "@/lib/competitor-store";
 import type { Channel } from "@/lib/types";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
 interface AddCompetitorPayload {
   handle?: string;
   channel?: Channel;
 }
 
-export async function GET() {
-  const competitors = await listCompetitors();
+export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
+  const competitors = await listCompetitors(userId);
   return NextResponse.json({ competitors });
 }
 
 export async function POST(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const body = (await request.json()) as AddCompetitorPayload;
 
   if (!body.handle?.trim() || !body.channel) {
@@ -22,12 +25,13 @@ export async function POST(request: Request) {
   const competitor = await addCompetitor({
     handle: body.handle.trim(),
     channel: body.channel,
-  });
+  }, userId);
 
   return NextResponse.json({ competitor });
 }
 
 export async function DELETE(request: Request) {
+  const userId = getUserIdFromRequest(request);
   const url = new URL(request.url);
   const id = url.searchParams.get("id");
 
@@ -35,7 +39,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  const removed = await removeCompetitor(id);
+  const removed = await removeCompetitor(id, userId);
   if (!removed) {
     return NextResponse.json({ error: "Competitor not found" }, { status: 404 });
   }

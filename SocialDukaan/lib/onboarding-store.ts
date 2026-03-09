@@ -1,6 +1,6 @@
-import fs from "fs";
 import { isRedisRestConfigured, redisDel, redisGetJson, redisSetJson } from "@/lib/redis-rest";
 import { deleteFiles, getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 export type PreferredLanguage = "english" | "hindi" | "hinglish";
 export type PrimaryObjective = "sales" | "followers" | "messages" | "awareness";
@@ -18,7 +18,7 @@ export interface OnboardingProfile {
   updatedAt: string;
 }
 
-const ONBOARDING_FILES = getPersistentFileCandidates("tasks/onboarding-profile.json");
+const ONBOARDING_FILE = "tasks/onboarding-profile.json";
 const ONBOARDING_KEY = "socialdukaan:onboarding-profile";
 
 const DEFAULT_PROFILE: OnboardingProfile = {
@@ -72,34 +72,24 @@ function normalizeProfile(input?: Partial<OnboardingProfile>): OnboardingProfile
   };
 }
 
-async function readProfileFromFile(): Promise<OnboardingProfile | null> {
-  try {
-    const profile = await readFirstExistingJson<Partial<OnboardingProfile>>(ONBOARDING_FILES);
-    return profile ? normalizeProfile(profile) : null;
-  } catch {
-    return null;
-  }
-}
+export async function getOnboardingProfile(userId = "anon"): Promise<OnboardingProfile> {
+  const key = userScopedKey(ONBOARDING_KEY, userId);
+  const files = getPersistentFileCandidates(userScopedRelativePath(ONBOARDING_FILE, userId));
 
-async function writeProfileToFile(profile: OnboardingProfile): Promise<void> {
-  await writeJsonWithFallback(ONBOARDING_FILES, profile);
-}
-
-export async function getOnboardingProfile(): Promise<OnboardingProfile> {
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<OnboardingProfile>(ONBOARDING_KEY);
+    const fromRedis = await redisGetJson<OnboardingProfile>(key);
     if (fromRedis) return normalizeProfile(fromRedis);
     const normalized = normalizeProfile(DEFAULT_PROFILE);
-    await redisSetJson(ONBOARDING_KEY, normalized);
+    await redisSetJson(key, normalized);
     return normalized;
   }
 
-  const fromFile = await readProfileFromFile();
-  if (fromFile) return fromFile;
+  const fromFile = await readFirstExistingJson<Partial<OnboardingProfile>>(files);
+  if (fromFile) return normalizeProfile(fromFile);
 
   const normalized = normalizeProfile(DEFAULT_PROFILE);
   try {
-    await writeProfileToFile(normalized);
+    await writeJsonWithFallback(files, normalized);
   } catch {
     // Vercel/serverless file systems may be read-only. Return default profile without persistence.
   }
@@ -108,8 +98,11 @@ export async function getOnboardingProfile(): Promise<OnboardingProfile> {
 
 export async function saveOnboardingProfile(
   input: Partial<OnboardingProfile>,
+  userId = "anon",
 ): Promise<OnboardingProfile> {
-  const current = await getOnboardingProfile();
+  const key = userScopedKey(ONBOARDING_KEY, userId);
+  const files = getPersistentFileCandidates(userScopedRelativePath(ONBOARDING_FILE, userId));
+  const current = await getOnboardingProfile(userId);
 
   const merged = normalizeProfile({
     ...current,
@@ -121,19 +114,21 @@ export async function saveOnboardingProfile(
   });
 
   if (isRedisRestConfigured()) {
-    await redisSetJson(ONBOARDING_KEY, merged);
+    await redisSetJson(key, merged);
     return merged;
   }
 
   try {
-    await writeProfileToFile(merged);
+    await writeJsonWithFallback(files, merged);
   } catch {
     // Allow onboarding flow to continue even when local file persistence is unavailable.
   }
   return merged;
 }
 
-export async function clearOnboardingProfile(): Promise<OnboardingProfile> {
+export async function clearOnboardingProfile(userId = "anon"): Promise<OnboardingProfile> {
+  const key = userScopedKey(ONBOARDING_KEY, userId);
+  const files = getPersistentFileCandidates(userScopedRelativePath(ONBOARDING_FILE, userId));
   const normalized = normalizeProfile({
     ...DEFAULT_PROFILE,
     onboardingCompleted: false,
@@ -141,14 +136,14 @@ export async function clearOnboardingProfile(): Promise<OnboardingProfile> {
   });
 
   if (isRedisRestConfigured()) {
-    await redisDel(ONBOARDING_KEY);
-    await redisSetJson(ONBOARDING_KEY, normalized);
+    await redisDel(key);
+    await redisSetJson(key, normalized);
     return normalized;
   }
 
   try {
-    await deleteFiles(ONBOARDING_FILES);
-    await writeProfileToFile(normalized);
+    await deleteFiles(files);
+    await writeJsonWithFallback(files, normalized);
   } catch {
     // Keep response usable even if file system persistence is unavailable.
   }

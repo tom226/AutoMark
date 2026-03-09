@@ -2,13 +2,14 @@ import fs from "fs";
 import { isRedisRestConfigured, redisGetJson, redisSetJson } from "@/lib/redis-rest";
 import { getPersistentFileCandidates, readFirstExistingJson, writeJsonWithFallback } from "@/lib/persistent-file";
 import type { Experiment, ExperimentVariantKey } from "@/lib/types";
+import { userScopedKey, userScopedRelativePath } from "@/lib/user-session";
 
 interface ExperimentState {
   experiments: Experiment[];
   updatedAt: string;
 }
 
-const EXPERIMENT_FILES = getPersistentFileCandidates(".experiments.json");
+const EXPERIMENT_FILE = ".experiments.json";
 const EXPERIMENTS_KEY = "socialdukaan:experiments";
 
 function rewriteCaptionForVariant(baseCaption: string): string {
@@ -24,43 +25,47 @@ function rewriteCaptionForVariant(baseCaption: string): string {
   return `${trimmed}\n\nQuick challenge: apply this in your next post and tell us what changed.`;
 }
 
-async function readFileState(): Promise<ExperimentState | null> {
+async function readFileState(userId = "anon"): Promise<ExperimentState | null> {
+  const files = getPersistentFileCandidates(userScopedRelativePath(EXPERIMENT_FILE, userId));
   try {
-    return await readFirstExistingJson<ExperimentState>(EXPERIMENT_FILES);
+    return await readFirstExistingJson<ExperimentState>(files);
   } catch {
     return null;
   }
 }
 
-async function writeFileState(state: ExperimentState): Promise<void> {
-  await writeJsonWithFallback(EXPERIMENT_FILES, state);
+async function writeFileState(state: ExperimentState, userId = "anon"): Promise<void> {
+  const files = getPersistentFileCandidates(userScopedRelativePath(EXPERIMENT_FILE, userId));
+  await writeJsonWithFallback(files, state);
 }
 
-export async function loadExperimentState(): Promise<ExperimentState> {
+export async function loadExperimentState(userId = "anon"): Promise<ExperimentState> {
+  const key = userScopedKey(EXPERIMENTS_KEY, userId);
   if (isRedisRestConfigured()) {
-    const fromRedis = await redisGetJson<ExperimentState>(EXPERIMENTS_KEY);
+    const fromRedis = await redisGetJson<ExperimentState>(key);
     if (fromRedis) return fromRedis;
     const fresh = { experiments: [], updatedAt: new Date().toISOString() };
-    await redisSetJson(EXPERIMENTS_KEY, fresh);
+    await redisSetJson(key, fresh);
     return fresh;
   }
 
-  const fromFile = await readFileState();
+  const fromFile = await readFileState(userId);
   if (fromFile) return fromFile;
 
   const fresh = { experiments: [], updatedAt: new Date().toISOString() };
-  await writeFileState(fresh);
+  await writeFileState(fresh, userId);
   return fresh;
 }
 
-export async function saveExperimentState(state: ExperimentState): Promise<void> {
+export async function saveExperimentState(state: ExperimentState, userId = "anon"): Promise<void> {
+  const key = userScopedKey(EXPERIMENTS_KEY, userId);
   const next = { ...state, updatedAt: new Date().toISOString() };
   if (isRedisRestConfigured()) {
-    await redisSetJson(EXPERIMENTS_KEY, next);
+    await redisSetJson(key, next);
     return;
   }
 
-  await writeFileState(next);
+  await writeFileState(next, userId);
 }
 
 export async function createExperiment(input: {
@@ -69,8 +74,8 @@ export async function createExperiment(input: {
   topic?: string;
   baseCaption: string;
   variantB?: string;
-}): Promise<Experiment> {
-  const state = await loadExperimentState();
+}, userId = "anon"): Promise<Experiment> {
+  const state = await loadExperimentState(userId);
   const experiment: Experiment = {
     id: `exp-${Date.now()}`,
     channel: input.channel,
@@ -95,12 +100,12 @@ export async function createExperiment(input: {
   };
 
   state.experiments.unshift(experiment);
-  await saveExperimentState(state);
+  await saveExperimentState(state, userId);
   return experiment;
 }
 
-export async function listExperiments(status?: "running" | "completed"): Promise<Experiment[]> {
-  const state = await loadExperimentState();
+export async function listExperiments(status?: "running" | "completed", userId = "anon"): Promise<Experiment[]> {
+  const state = await loadExperimentState(userId);
   const ordered = [...state.experiments].sort(
     (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)
   );
@@ -114,8 +119,8 @@ export async function updateExperimentMetrics(input: {
   variant: ExperimentVariantKey;
   impressions: number;
   engagements: number;
-}): Promise<Experiment | null> {
-  const state = await loadExperimentState();
+}, userId = "anon"): Promise<Experiment | null> {
+  const state = await loadExperimentState(userId);
   const target = state.experiments.find((item) => item.id === input.experimentId);
   if (!target) return null;
 
@@ -129,7 +134,7 @@ export async function updateExperimentMetrics(input: {
       : variant
   ) as [Experiment["variants"][number], Experiment["variants"][number]];
 
-  await saveExperimentState(state);
+  await saveExperimentState(state, userId);
   return target;
 }
 
@@ -138,8 +143,8 @@ function engagementRate(impressions: number, engagements: number): number {
   return engagements / impressions;
 }
 
-export async function evaluateExperiment(experimentId: string): Promise<Experiment | null> {
-  const state = await loadExperimentState();
+export async function evaluateExperiment(experimentId: string, userId = "anon"): Promise<Experiment | null> {
+  const state = await loadExperimentState(userId);
   const target = state.experiments.find((item) => item.id === experimentId);
   if (!target) return null;
 
@@ -151,15 +156,15 @@ export async function evaluateExperiment(experimentId: string): Promise<Experime
   target.status = "completed";
   target.completedAt = new Date().toISOString();
 
-  await saveExperimentState(state);
+  await saveExperimentState(state, userId);
   return target;
 }
 
 export async function getLatestWinnerCaption(input: {
   channel: Experiment["channel"];
   pageId?: string;
-}): Promise<string | null> {
-  const state = await loadExperimentState();
+}, userId = "anon"): Promise<string | null> {
+  const state = await loadExperimentState(userId);
 
   const completed = state.experiments
     .filter((experiment) => {

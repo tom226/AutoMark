@@ -3,16 +3,19 @@ import { listCompetitors } from "@/lib/competitor-store";
 import { fetchResearchUsingWrapper } from "@/lib/research-wrapper";
 import { getResearchSnapshot, replaceResearchSnapshot } from "@/lib/research-store";
 import { getResearchPreferences } from "@/lib/research-preferences-store";
+import { getUserIdFromRequest } from "@/lib/user-session";
 
-export async function GET() {
-  const snapshot = await getResearchSnapshot();
+export async function GET(request: Request) {
+  const userId = getUserIdFromRequest(request);
+  const snapshot = await getResearchSnapshot(userId);
   return NextResponse.json(snapshot);
 }
 
-export async function POST() {
-  const competitors = await listCompetitors();
+export async function POST(request: Request) {
+  const userId = getUserIdFromRequest(request);
+  const competitors = await listCompetitors(userId);
   const userCompetitors = competitors.filter((item) => !item.isSeed);
-  const preferences = await getResearchPreferences();
+  const preferences = await getResearchPreferences(userId);
 
   if (userCompetitors.length === 0) {
     return NextResponse.json(
@@ -33,7 +36,7 @@ export async function POST() {
   });
 
   if (fetched.items.length === 0) {
-    const existing = await getResearchSnapshot();
+    const existing = await getResearchSnapshot(userId);
     if (existing.items.length > 0) {
       return NextResponse.json({
         ...existing,
@@ -53,7 +56,7 @@ export async function POST() {
   const saved = await replaceResearchSnapshot({
     items: fetched.items,
     trendingHashtags: fetched.trendingHashtags,
-  });
+  }, userId);
 
   return NextResponse.json({
     ...saved,
