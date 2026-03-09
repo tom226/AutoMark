@@ -71,6 +71,24 @@ const channelMeta: Record<
     color: "text-channel-twitter",
     bg: "bg-cyan-50",
   },
+  sharechat: {
+    label: "ShareChat",
+    icon: Bot,
+    color: "text-indigo-600",
+    bg: "bg-indigo-50",
+  },
+  moj: {
+    label: "Moj",
+    icon: Bot,
+    color: "text-orange-600",
+    bg: "bg-orange-50",
+  },
+  josh: {
+    label: "Josh",
+    icon: Bot,
+    color: "text-rose-600",
+    bg: "bg-rose-50",
+  },
 };
 
 const tones: AutopilotRule["tone"][] = [
